@@ -164,6 +164,24 @@
     .completion-sub { font-size: 14px; color: var(--text-secondary); line-height: 1.6; max-width: 240px; }
     .summary-pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
     .summary-pill { padding: 6px 14px; background: var(--warm-bg); border: 0.5px solid var(--border); border-radius: 20px; font-size: 13px; color: var(--text-secondary); }
+    .summary-pill-missed { padding: 6px 14px; background: var(--terracotta-overlay); border: 0.5px solid var(--terracotta-light); border-radius: 20px; font-size: 13px; color: var(--terracotta); }
+
+    /* End-day button + closed-day view */
+    .end-day-row { display: flex; justify-content: center; padding: 0 24px calc(12px + var(--safe-bottom) / 4); flex-shrink: 0; }
+    .end-day-link { background: none; border: none; font-family: var(--mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; padding: 6px 12px; cursor: pointer; transition: color 200ms ease; }
+    .end-day-link:active { color: var(--terracotta); }
+    .end-day-link.hidden { display: none; }
+
+    .closed-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 32px; gap: 14px; flex: 1; overflow-y: auto; }
+    .closed-screen.visible { display: flex; }
+    .closed-orb { width: 80px; height: 80px; border-radius: 50%; background: var(--terracotta-light); display: flex; align-items: center; justify-content: center; font-size: 36px; }
+    .closed-title { font-family: var(--heading); font-size: 26px; color: var(--text-primary); font-weight: 500; }
+    .closed-stats { font-family: var(--mono); font-size: 13px; color: var(--text-secondary); letter-spacing: 0.04em; }
+    .closed-lists { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 320px; margin-top: 4px; }
+    .closed-list-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; text-align: left; }
+    .closed-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+    .reopen-link { background: none; border: none; font-family: var(--mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.05em; padding: 8px 14px; cursor: pointer; margin-top: 4px; }
+    .reopen-link:active { color: var(--text-primary); }
 
     .dash-scroll, .habits-scroll, .settings-scroll { flex: 1; overflow-y: auto; padding: 0 20px 16px; -webkit-overflow-scrolling: touch; }
     .dash-scroll::-webkit-scrollbar, .habits-scroll::-webkit-scrollbar, .settings-scroll::-webkit-scrollbar { display: none; }
@@ -270,6 +288,22 @@
       <div class="completion-sub">You showed up for yourself. That's everything that matters.</div>
       <div class="summary-pills" id="summary-pills"></div>
     </div>
+    <div class="closed-screen" id="closed-screen">
+      <div class="closed-orb">🌙</div>
+      <div class="closed-title">Day closed</div>
+      <div class="closed-stats" id="closed-stats">0 done · 0 missed</div>
+      <div class="closed-lists">
+        <div id="closed-done-section" style="display:none">
+          <div class="closed-list-label">Done</div>
+          <div class="closed-pills" id="closed-done-pills"></div>
+        </div>
+        <div id="closed-missed-section" style="display:none">
+          <div class="closed-list-label">Missed</div>
+          <div class="closed-pills" id="closed-missed-pills"></div>
+        </div>
+      </div>
+      <button class="reopen-link" id="reopen-day-btn">Reopen day</button>
+    </div>
     <div class="swipe-buttons" id="swipe-buttons">
       <button class="swipe-btn btn-skip" id="btn-skip" aria-label="Skip">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22" style="color:var(--terracotta)"><path stroke-linecap="round" d="M6 18 18 6M6 6l12 12"/></svg>
@@ -277,6 +311,9 @@
       <button class="swipe-btn btn-done" id="btn-done" aria-label="Done">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22" style="color:var(--sage)"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
       </button>
+    </div>
+    <div class="end-day-row" id="end-day-row">
+      <button class="end-day-link" id="end-day-btn">End day · 0 of 0</button>
     </div>
   </div>
 
@@ -437,6 +474,7 @@
     HABITS: 'drift:habits',
     LOGS:   'drift:logs',
     SETTINGS: 'drift:settings',
+    CLOSED: 'drift:closedDays',
   };
 
   const DEFAULT_HABITS = [
@@ -478,6 +516,7 @@
   let habits = loadJSON(STORAGE.HABITS, DEFAULT_HABITS);
   let logs = loadJSON(STORAGE.LOGS, {}); // { 'YYYY-MM-DD': [habitId, ...] }
   let settings = Object.assign({}, DEFAULT_SETTINGS, loadJSON(STORAGE.SETTINGS, {}));
+  let closedDays = loadJSON(STORAGE.CLOSED, []); // ['YYYY-MM-DD', ...]
 
   // First-run: persist defaults so the user can edit them
   if (!localStorage.getItem(STORAGE.HABITS)) saveJSON(STORAGE.HABITS, habits);
@@ -500,6 +539,21 @@
     saveJSON(STORAGE.LOGS, logs);
   }
 
+  function isDayClosed(date) {
+    return closedDays.includes(date || todayKey());
+  }
+  function closeDay() {
+    const k = todayKey();
+    if (!closedDays.includes(k)) {
+      closedDays.push(k);
+      saveJSON(STORAGE.CLOSED, closedDays);
+    }
+  }
+  function reopenDay() {
+    closedDays = closedDays.filter(d => d !== todayKey());
+    saveJSON(STORAGE.CLOSED, closedDays);
+  }
+
   /* ──────── Stack & Swipe ──────── */
   function initStack() {
     const done = getDoneToday();
@@ -514,18 +568,76 @@
   function renderStack() {
     const area = document.getElementById('card-area');
     area.querySelectorAll('.habit-card').forEach(c => c.remove());
+
+    const completionEl = document.getElementById('completion-screen');
+    const closedEl = document.getElementById('closed-screen');
+    const swipeBtns = document.getElementById('swipe-buttons');
+    const endDayRow = document.getElementById('end-day-row');
+
+    // Day closed → show closed view, hide everything else
+    if (isDayClosed()) {
+      completionEl.classList.remove('visible');
+      closedEl.classList.add('visible');
+      swipeBtns.style.display = 'none';
+      endDayRow.style.display = 'none';
+      renderClosedView();
+      return;
+    }
+
+    closedEl.classList.remove('visible');
+
+    // All done → celebration screen
     if (stack.length === 0) {
-      document.getElementById('completion-screen').classList.add('visible');
-      document.getElementById('swipe-buttons').style.display = 'none';
+      completionEl.classList.add('visible');
+      swipeBtns.style.display = 'none';
+      endDayRow.style.display = 'none';
       document.getElementById('summary-pills').innerHTML = habits.map(h => `<div class="summary-pill">${h.emoji} ${h.name}</div>`).join('');
       return;
     }
-    document.getElementById('completion-screen').classList.remove('visible');
-    document.getElementById('swipe-buttons').style.display = '';
+
+    // Normal deck
+    completionEl.classList.remove('visible');
+    swipeBtns.style.display = '';
+    endDayRow.style.display = habits.length > 0 ? 'flex' : 'none';
+    updateEndDayLabel();
     const card = createCard(stack[0]);
     card.style.zIndex = 10;
     area.appendChild(card);
     initSwipe(card, stack[0]);
+  }
+
+  function updateEndDayLabel() {
+    const total = habits.length;
+    const done = getDoneToday().length;
+    const btn = document.getElementById('end-day-btn');
+    if (btn) btn.textContent = `End day · ${done} of ${total}`;
+  }
+
+  function renderClosedView() {
+    const done = getDoneToday();
+    const doneHabits = habits.filter(h => done.includes(h.id));
+    const missedHabits = habits.filter(h => !done.includes(h.id));
+
+    document.getElementById('closed-stats').textContent = `${doneHabits.length} done · ${missedHabits.length} missed`;
+
+    const doneSection = document.getElementById('closed-done-section');
+    const missedSection = document.getElementById('closed-missed-section');
+
+    if (doneHabits.length) {
+      doneSection.style.display = '';
+      document.getElementById('closed-done-pills').innerHTML =
+        doneHabits.map(h => `<div class="summary-pill">${h.emoji} ${escapeHtml(h.name)}</div>`).join('');
+    } else {
+      doneSection.style.display = 'none';
+    }
+
+    if (missedHabits.length) {
+      missedSection.style.display = '';
+      document.getElementById('closed-missed-pills').innerHTML =
+        missedHabits.map(h => `<div class="summary-pill-missed">${h.emoji} ${escapeHtml(h.name)}</div>`).join('');
+    } else {
+      missedSection.style.display = 'none';
+    }
   }
 
   function escapeHtml(s) {
@@ -619,7 +731,27 @@
     const pct = total ? Math.round(done / total * 100) : 0;
     document.getElementById('progress-fill').style.width = pct + '%';
     document.getElementById('progress-label').textContent = `${done} / ${total}`;
+    updateEndDayLabel();
   }
+
+  /* End-day button */
+  document.getElementById('end-day-btn').onclick = () => {
+    const total = habits.length;
+    const done = getDoneToday().length;
+    const missed = total - done;
+    const msg = missed === 0
+      ? `Close out today? You can reopen it later.`
+      : `Close out today with ${done} of ${total}? The remaining ${missed} will count as missed. You can reopen later.`;
+    if (!confirm(msg)) return;
+    closeDay();
+    skipQueue = [];
+    initStack();
+  };
+
+  document.getElementById('reopen-day-btn').onclick = () => {
+    reopenDay();
+    initStack();
+  };
 
   /* ──────── Buttons ──────── */
   document.getElementById('btn-done').onclick = () => {
@@ -940,9 +1072,11 @@
     localStorage.removeItem(STORAGE.HABITS);
     localStorage.removeItem(STORAGE.LOGS);
     localStorage.removeItem(STORAGE.SETTINGS);
+    localStorage.removeItem(STORAGE.CLOSED);
     habits = [...DEFAULT_HABITS];
     logs = {};
     settings = { ...DEFAULT_SETTINGS };
+    closedDays = [];
     saveJSON(STORAGE.HABITS, habits);
     skipQueue = [];
     initStack();
