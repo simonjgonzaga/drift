@@ -1,0 +1,13 @@
+{
+  "name": "drift",
+  "version": "1.1.0",
+  "description": "Drift — installable PWA habit tracker with Claude-generated completion messages",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

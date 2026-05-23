@@ -285,7 +285,7 @@
     <div class="completion-screen" id="completion-screen">
       <div class="completion-orb">🌿</div>
       <div class="completion-title">All done for today</div>
-      <div class="completion-sub">You showed up for yourself. That's everything that matters.</div>
+      <div class="completion-sub" id="completion-sub">You showed up for yourself. That's everything that matters.</div>
       <div class="summary-pills" id="summary-pills"></div>
     </div>
     <div class="closed-screen" id="closed-screen">
@@ -475,7 +475,10 @@
     LOGS:   'drift:logs',
     SETTINGS: 'drift:settings',
     CLOSED: 'drift:closedDays',
+    CONGRATS: 'drift:congrats', // { 'YYYY-MM-DD': message }
   };
+
+  const STATIC_CONGRATS = "You showed up for yourself. That's everything that matters.";
 
   const DEFAULT_HABITS = [
     {id:'1',name:'Meditate',emoji:'🧘',cat:'Mind',cadence:'daily',freq:7,note:'Even 5 mins counts'},
@@ -592,6 +595,9 @@
       swipeBtns.style.display = 'none';
       endDayRow.style.display = 'none';
       document.getElementById('summary-pills').innerHTML = habits.map(h => `<div class="summary-pill">${h.emoji} ${h.name}</div>`).join('');
+      // Fire-and-forget: fetch a personalized message from the Claude API
+      // (cached per day; falls back silently to the static subtitle on error).
+      loadCongratsMessage();
       return;
     }
 
@@ -637,6 +643,59 @@
         missedHabits.map(h => `<div class="summary-pill-missed">${h.emoji} ${escapeHtml(h.name)}</div>`).join('');
     } else {
       missedSection.style.display = 'none';
+    }
+  }
+
+  /* ──────── Claude-generated congratulations ──────── */
+  // Calls /api/congrats (Vercel serverless function) once per day, caches
+  // in localStorage, and degrades silently to the static subtitle if the
+  // API key is missing, the user is offline, or anything else fails.
+  let congratsInFlight = false;
+  async function loadCongratsMessage() {
+    const subEl = document.getElementById('completion-sub');
+    if (!subEl) return;
+
+    const key = todayKey();
+    const cache = loadJSON(STORAGE.CONGRATS, {});
+
+    // Fast path: cached for today
+    if (cache[key]) {
+      subEl.textContent = cache[key];
+      return;
+    }
+
+    if (congratsInFlight) return;
+    congratsInFlight = true;
+
+    // Reset to static text in case a prior day's message is showing
+    subEl.textContent = STATIC_CONGRATS;
+
+    try {
+      const resp = await fetch('./api/congrats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          habitCount: habits.length,
+          habitNames: habits.map(h => h.name),
+        }),
+      });
+      if (!resp.ok) return; // keep STATIC_CONGRATS
+      const data = await resp.json();
+      const msg = (data && typeof data.message === 'string') ? data.message.trim() : '';
+      if (!msg) return;
+
+      // Persist per-day so we don't re-spend tokens each render
+      const updated = { ...cache, [key]: msg };
+      saveJSON(STORAGE.CONGRATS, updated);
+
+      // Only update the UI if we're still on the completion screen
+      const completionVisible = document.getElementById('completion-screen')?.classList.contains('visible');
+      if (completionVisible) subEl.textContent = msg;
+    } catch (err) {
+      // Offline, network failure, or function returned non-JSON — leave the static text
+      console.warn('[drift] congrats fetch failed', err);
+    } finally {
+      congratsInFlight = false;
     }
   }
 
@@ -1073,6 +1132,7 @@
     localStorage.removeItem(STORAGE.LOGS);
     localStorage.removeItem(STORAGE.SETTINGS);
     localStorage.removeItem(STORAGE.CLOSED);
+    localStorage.removeItem(STORAGE.CONGRATS);
     habits = [...DEFAULT_HABITS];
     logs = {};
     settings = { ...DEFAULT_SETTINGS };
