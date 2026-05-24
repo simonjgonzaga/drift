@@ -609,6 +609,7 @@
     if (isDayClosed()) {
       completionEl.classList.remove('visible');
       closedEl.classList.add('visible');
+      area.style.display = 'none';       // hide the deck area + its ghost cards
       swipeBtns.style.display = 'none';
       endDayRow.style.display = 'none';
       renderClosedView();
@@ -620,17 +621,19 @@
     // All done → celebration screen
     if (stack.length === 0) {
       completionEl.classList.add('visible');
+      area.style.display = 'none';       // hide the deck area + its ghost cards
       swipeBtns.style.display = 'none';
       endDayRow.style.display = 'none';
       document.getElementById('summary-pills').innerHTML = habits.map(h => `<div class="summary-pill">${h.emoji} ${h.name}</div>`).join('');
-      // Fire-and-forget: fetch a personalized message from the Claude API
-      // (cached per day; falls back silently to the static subtitle on error).
+      // Fire-and-forget: fetch a personalized affirmation from /api/congrats
+      // (cached per day; falls back to a first-person template on error).
       loadCongratsMessage();
       return;
     }
 
     // Normal deck
     completionEl.classList.remove('visible');
+    area.style.display = '';             // restore the deck area for swiping
     swipeBtns.style.display = '';
     endDayRow.style.display = habits.length > 0 ? 'flex' : 'none';
     updateEndDayLabel();
