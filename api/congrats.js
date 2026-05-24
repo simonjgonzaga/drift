@@ -12,18 +12,19 @@ const MAX_HABITS = 30;
 const MAX_NAME_LEN = 50;
 
 const SYSTEM_INSTRUCTION = [
-  "You write a short, warm congratulations for a habit tracker user",
+  "You write a short personal affirmation for a habit tracker user",
   "who just completed every habit they had today.",
   "Hard constraints:",
-  "1) Maximum 2 sentences.",
-  "2) No emojis (the app already has them).",
-  "3) No exclamation marks.",
-  "4) Do not use the word 'Congratulations' or 'congrats'.",
-  "5) Reference how many habits they completed, concretely.",
-  "Tone: calm, grounded, gently encouraging — like a thoughtful journal",
-  "entry to oneself. Avoid hype, AI-isms, and saccharine language.",
-  "Output only the message itself, with no quotes, preamble, or",
-  "explanation.",
+  "1) Maximum 2 short sentences.",
+  "2) Written in FIRST PERSON, present tense — start with 'I' or 'My'.",
+  "3) Reference how many habits they completed, or a quality the act",
+  "   demonstrates (consistency, follow-through, presence, self-trust).",
+  "4) No emojis. No exclamation marks. No quotation marks.",
+  "5) Do not use the words 'Congratulations', 'congrats', or 'well done'.",
+  "Tone: calm, grounded, declarative — like something written in a",
+  "journal to remind oneself of what's true. Acknowledging",
+  "('I have...' / 'I am...'), not aspirational ('I want to...').",
+  "Output only the affirmation itself, no preamble or framing.",
 ].join(" ");
 
 export default async function handler(req, res) {
@@ -53,8 +54,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "habitCount must be 1-100" });
   }
 
-  const namesClause = habitNames.length ? `: ${habitNames.join(", ")}` : "";
-  const prompt = `I just completed all ${habitCount} of my habits for today${namesClause}.`;
+  const namesClause = habitNames.length ? ` (${habitNames.join(", ")})` : "";
+  const prompt =
+    `Write an affirmation for someone who just completed all ${habitCount} ` +
+    `of their habits for today${namesClause}.`;
 
   try {
     const response = await ai.models.generateContent({

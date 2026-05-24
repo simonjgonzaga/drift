@@ -1,5 +1,5 @@
 // Drift PWA service worker — offline-first cache
-const CACHE_VERSION = 'drift-v3';
+const CACHE_VERSION = 'drift-v4';
 const CORE_ASSETS = [
   './',
   './index.html',

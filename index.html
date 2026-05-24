@@ -156,14 +156,45 @@
     .swipe-btn.btn-skip { border-color: var(--terracotta-light); }
     .swipe-btn.btn-skip:hover { background: var(--terracotta-light); }
 
-    .completion-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px; gap: 16px; flex: 1; }
-    .completion-screen.visible { display: flex; }
+    .completion-screen { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px; gap: 20px; flex: 1; }
+    .completion-screen.visible { display: flex; animation: completionFadeIn 700ms cubic-bezier(0.16, 1, 0.3, 1); }
+    @keyframes completionFadeIn { from { opacity: 0; } to { opacity: 1; } }
     .completion-orb { width: 96px; height: 96px; border-radius: 50%; background: var(--sage-light); display: flex; align-items: center; justify-content: center; font-size: 42px; animation: gentlePulse 3s ease-in-out infinite; }
     @keyframes gentlePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
-    .completion-title { font-family: var(--heading); font-size: 28px; color: var(--text-primary); font-weight: 500; }
-    .completion-sub { font-size: 14px; color: var(--text-secondary); line-height: 1.6; max-width: 240px; }
-    .summary-pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+    .completion-affirmation {
+      font-family: var(--heading);
+      font-size: 24px;
+      font-style: italic;
+      font-weight: 400;
+      color: var(--text-primary);
+      line-height: 1.5;
+      max-width: 320px;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 800ms cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 800ms cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: opacity, transform;
+    }
+    .completion-affirmation.visible { opacity: 1; transform: translateY(0); }
+    .summary-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 8px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1) 250ms,
+                  transform 600ms cubic-bezier(0.16, 1, 0.3, 1) 250ms;
+    }
+    .summary-pills.visible { opacity: 1; transform: translateY(0); }
     .summary-pill { padding: 6px 14px; background: var(--warm-bg); border: 0.5px solid var(--border); border-radius: 20px; font-size: 13px; color: var(--text-secondary); }
+    @media (prefers-reduced-motion: reduce) {
+      .completion-screen.visible { animation: none; }
+      .completion-affirmation, .summary-pills { transition: none; }
+      .completion-orb { animation: none; }
+    }
     .summary-pill-missed { padding: 6px 14px; background: var(--terracotta-overlay); border: 0.5px solid var(--terracotta-light); border-radius: 20px; font-size: 13px; color: var(--terracotta); }
 
     /* End-day button + closed-day view */
@@ -284,8 +315,7 @@
     </div>
     <div class="completion-screen" id="completion-screen">
       <div class="completion-orb">🌿</div>
-      <div class="completion-title">All done for today</div>
-      <div class="completion-sub" id="completion-sub">You showed up for yourself. That's everything that matters.</div>
+      <div class="completion-affirmation" id="completion-affirmation"></div>
       <div class="summary-pills" id="summary-pills"></div>
     </div>
     <div class="closed-screen" id="closed-screen">
@@ -475,10 +505,8 @@
     LOGS:   'drift:logs',
     SETTINGS: 'drift:settings',
     CLOSED: 'drift:closedDays',
-    CONGRATS: 'drift:congrats', // { 'YYYY-MM-DD': message }
+    CONGRATS: 'drift:congrats', // { 'YYYY-MM-DD': affirmation } (legacy key — still used)
   };
-
-  const STATIC_CONGRATS = "You showed up for yourself. That's everything that matters.";
 
   const DEFAULT_HABITS = [
     {id:'1',name:'Meditate',emoji:'🧘',cat:'Mind',cadence:'daily',freq:7,note:'Even 5 mins counts'},
@@ -646,29 +674,58 @@
     }
   }
 
-  /* ──────── Claude-generated congratulations ──────── */
+  /* ──────── Gemini-generated affirmation ──────── */
   // Calls /api/congrats (Vercel serverless function) once per day, caches
-  // in localStorage, and degrades silently to the static subtitle if the
+  // in localStorage, and degrades silently to a generated fallback if the
   // API key is missing, the user is offline, or anything else fails.
+  // The text fades in smoothly via a CSS transition triggered by the
+  // .visible class (see .completion-affirmation styles).
   let congratsInFlight = false;
   async function loadCongratsMessage() {
-    const subEl = document.getElementById('completion-sub');
-    if (!subEl) return;
+    const affEl = document.getElementById('completion-affirmation');
+    const pillsEl = document.getElementById('summary-pills');
+    if (!affEl) return;
+
+    // First-person dynamic fallback used if the API can't be reached.
+    const fallback = habits.length === 1
+      ? "I completed the one habit I set for today."
+      : `I completed all ${habits.length} of my habits for today.`;
+
+    // Reset animation state — even cached affirmations re-animate when the
+    // screen reopens, which keeps the entrance feeling intentional.
+    affEl.classList.remove('visible');
+    pillsEl?.classList.remove('visible');
+
+    // One-shot reveal. The double rAF makes sure the text is in the DOM
+    // and the layout has settled before the transition kicks in, so the
+    // first frame of the fade-up is always opacity:0/translateY(10px).
+    let revealed = false;
+    const reveal = (text) => {
+      if (revealed) return;
+      revealed = true;
+      affEl.textContent = text;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        affEl.classList.add('visible');
+        pillsEl?.classList.add('visible');
+      }));
+    };
 
     const key = todayKey();
     const cache = loadJSON(STORAGE.CONGRATS, {});
 
-    // Fast path: cached for today
+    // Fast path: cached for today — reveal immediately with the animation
     if (cache[key]) {
-      subEl.textContent = cache[key];
+      reveal(cache[key]);
       return;
     }
 
     if (congratsInFlight) return;
     congratsInFlight = true;
 
-    // Reset to static text in case a prior day's message is showing
-    subEl.textContent = STATIC_CONGRATS;
+    // If the API is slow, show the fallback after 4.5s. The in-flight
+    // fetch continues; if it eventually succeeds we still cache it for
+    // next time, even though this session shows the fallback.
+    const fallbackTimer = setTimeout(() => reveal(fallback), 4500);
 
     try {
       const resp = await fetch('./api/congrats', {
@@ -679,21 +736,22 @@
           habitNames: habits.map(h => h.name),
         }),
       });
-      if (!resp.ok) return; // keep STATIC_CONGRATS
+      if (!resp.ok) throw new Error('http ' + resp.status);
       const data = await resp.json();
       const msg = (data && typeof data.message === 'string') ? data.message.trim() : '';
-      if (!msg) return;
+      if (!msg) throw new Error('empty response');
 
-      // Persist per-day so we don't re-spend tokens each render
-      const updated = { ...cache, [key]: msg };
-      saveJSON(STORAGE.CONGRATS, updated);
+      // Always cache successful generations, even if the fallback already
+      // showed — the user will see the AI text on their next visit today.
+      saveJSON(STORAGE.CONGRATS, { ...cache, [key]: msg });
 
-      // Only update the UI if we're still on the completion screen
+      clearTimeout(fallbackTimer);
       const completionVisible = document.getElementById('completion-screen')?.classList.contains('visible');
-      if (completionVisible) subEl.textContent = msg;
+      if (completionVisible) reveal(msg);
     } catch (err) {
-      // Offline, network failure, or function returned non-JSON — leave the static text
-      console.warn('[drift] congrats fetch failed', err);
+      console.warn('[drift] affirmation fetch failed', err);
+      clearTimeout(fallbackTimer);
+      reveal(fallback);
     } finally {
       congratsInFlight = false;
     }

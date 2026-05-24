@@ -2,8 +2,9 @@
 
 A calm, installable Progressive Web App for tracking daily habits.
 Local-first, offline-ready, no accounts. Swipe right to mark done,
-left to skip. When you finish all of your habits for the day, Gemini
-writes you a short personal congratulations.
+left to skip. When you finish all of your habits for the day, the
+completion screen fades in with a short personal affirmation written
+by Gemini, in your own voice.
 
 ## Files
 
@@ -54,11 +55,13 @@ Environment variables only take effect on new deployments:
 
 That's it. The PWA is live, installable, and the completion screen will now show a personalized Gemini-generated message the first time you finish all your habits each day.
 
-## How the congratulations message works
+## How the affirmation works
 
-When you complete all habits for the day, the app sends `habitCount` and `habitNames` to `/api/congrats`. The serverless function (running on Vercel, never in the browser) holds `GEMINI_API_KEY` and calls **Gemini 2.5 Flash** for a calm, ≤2-sentence acknowledgment. Thinking is disabled — for a 2-sentence generation it would just add latency and cost. The result is cached in `localStorage` keyed by date, so the API is hit at most once per day per user — even if you reopen the completion screen.
+When you complete all habits for the day, the app sends `habitCount` and `habitNames` to `/api/congrats`. The serverless function (running on Vercel, never in the browser) holds `GEMINI_API_KEY` and calls **Gemini 2.5 Flash** for a calm, first-person, ≤2-sentence affirmation — written as if you'd written it to yourself in a journal. Thinking is disabled (`thinkingBudget: 0`) — for a 2-sentence generation it would just add latency and cost.
 
-If the API key is missing, the user is offline, or anything fails, the screen falls back to the original static subtitle without complaint.
+The screen waits briefly on the pulsing orb while the affirmation generates, then fades the text up into place with a smooth 800ms ease. The pills follow 250ms later. The result is cached in `localStorage` keyed by date so the API is hit at most once per user per day; the entrance animation still plays each time the screen opens.
+
+If the API takes longer than 4.5s, the key is missing, the user is offline, or anything fails, a generated first-person fallback (e.g. *"I completed all 5 of my habits for today."*) takes its place — with the same animation.
 
 ## Running locally
 
