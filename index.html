@@ -87,6 +87,108 @@
       padding-bottom: 10px;
       flex-shrink: 0;
     }
+    .safe-top-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .view-toggle {
+      background: none;
+      border: none;
+      padding: 6px;
+      margin: -6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 200ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .view-toggle:active { color: var(--text-primary); }
+    .view-toggle.active { color: var(--text-primary); }
+
+    /* List view (manual tick mode) */
+    .today-list-view {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 20px 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .today-list-view::-webkit-scrollbar { display: none; }
+    .today-list-view.visible { display: block; }
+    .today-list-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--card-white);
+      border: 0.5px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: background 150ms ease, opacity 200ms ease;
+      user-select: none;
+    }
+    .today-list-row:active { background: var(--warm-bg); }
+    .today-list-row.done { opacity: 0.55; }
+    .today-list-row.done .today-list-name { text-decoration: line-through; text-decoration-color: var(--text-muted); }
+    .today-list-emoji { font-size: 22px; width: 32px; text-align: center; }
+    .today-list-info { flex: 1; min-width: 0; }
+    .today-list-name {
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .today-list-sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      letter-spacing: 0.04em;
+    }
+    .today-list-tag,
+    .habit-row-tag,
+    .habit-manage-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      background: var(--warm-bg);
+      border: 0.5px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .today-list-check {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: transparent;
+      transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+      flex-shrink: 0;
+    }
+    .today-list-row.done .today-list-check {
+      background: var(--sage);
+      border-color: var(--sage);
+      color: white;
+    }
+
+    /* Met-goal pill on dashboard */
+    .habit-pct-met { color: var(--sage); }
 
     .tab-bar {
       height: calc(var(--tab-h) + var(--safe-bottom));
@@ -298,8 +400,14 @@
 <body>
 <div class="app" id="app">
   <div class="screen active" id="screen-today">
-    <div class="safe-top">
+    <div class="safe-top safe-top-row">
       <div style="font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text-muted);letter-spacing:0.04em;">drift</div>
+      <button class="view-toggle" id="view-toggle" aria-label="Toggle view">
+        <!-- Default: list icon (means "tap to see list") — JS swaps to cards icon in list mode -->
+        <svg id="view-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75l1.5 1.5L7.5 6M3.75 12l1.5 1.5L7.5 11.25M3.75 17.25l1.5 1.5L7.5 16.5M10.5 7h9M10.5 12h9M10.5 17h9"/>
+        </svg>
+      </button>
     </div>
     <div class="today-header">
       <div class="today-date" id="today-date">friday, may 23</div>
@@ -313,6 +421,7 @@
       <div class="stack-ghost" style="transform:translateY(10px) scale(0.94);opacity:0.4;z-index:0;"></div>
       <div class="stack-ghost" style="transform:translateY(5px) scale(0.97);opacity:0.7;z-index:1;"></div>
     </div>
+    <div class="today-list-view" id="today-list-view"></div>
     <div class="completion-screen" id="completion-screen">
       <div class="completion-orb">🌿</div>
       <div class="completion-affirmation" id="completion-affirmation"></div>
@@ -471,6 +580,10 @@
         <div class="cat-row" id="cat-row"></div>
       </div>
       <div class="field-group">
+        <label class="field-label">Time of day</label>
+        <div class="cat-row" id="tag-row"></div>
+      </div>
+      <div class="field-group">
         <label class="field-label">Cadence</label>
         <div class="cadence-row">
           <div class="cadence-btn selected" data-cadence="daily">Daily</div>
@@ -485,6 +598,16 @@
             <button class="freq-btn" id="freq-minus">−</button>
             <div class="freq-val" id="freq-val">3</div>
             <button class="freq-btn" id="freq-plus">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="freq-row">
+          <div class="freq-label">Month goal</div>
+          <div class="freq-ctrl">
+            <button class="freq-btn" id="goal-minus">−</button>
+            <div class="freq-val" id="goal-val">0</div>
+            <button class="freq-btn" id="goal-plus">+</button>
           </div>
         </div>
       </div>
@@ -509,11 +632,27 @@
   };
 
   const DEFAULT_HABITS = [
-    {id:'1',name:'Meditate',emoji:'🧘',cat:'Mind',cadence:'daily',freq:7,note:'Even 5 mins counts'},
-    {id:'2',name:'Read',emoji:'📖',cat:'Mind',cadence:'weekly',freq:5,note:''},
-    {id:'3',name:'Drink water',emoji:'💧',cat:'Health',cadence:'daily',freq:7,note:'8 glasses'},
-    {id:'4',name:'Morning walk',emoji:'🏃',cat:'Health',cadence:'weekly',freq:4,note:''},
-    {id:'5',name:'Journal',emoji:'✍️',cat:'Personal',cadence:'daily',freq:7,note:'Gratitude focus'},
+    // AM
+    {id:'1',  name:'Meditate at least 10 minutes a day', emoji:'🧘', cat:'General',                    cadence:'daily', freq:7, note:'', monthGoal:18, timeTag:'AM'},
+    {id:'2',  name:'Read and Write Commitment and Goals', emoji:'✍️', cat:'General',                    cadence:'daily', freq:7, note:'', monthGoal:18, timeTag:'AM'},
+    {id:'3',  name:'Gratitude Practice',                  emoji:'🌿', cat:'General',                    cadence:'daily', freq:7, note:'', monthGoal:18, timeTag:'AM'},
+    // PM
+    {id:'4',  name:'Stretch',                             emoji:'🤸', cat:'Fitness 💪🏽',                 cadence:'daily', freq:7, note:'', monthGoal:22, timeTag:'PM'},
+    {id:'5',  name:'Gym',                                 emoji:'🏋️', cat:'Fitness 💪🏽',                 cadence:'daily', freq:7, note:'', monthGoal:20, timeTag:'PM'},
+    {id:'6',  name:'Stair Master / Run',                  emoji:'🏃', cat:'Fitness 💪🏽',                 cadence:'daily', freq:7, note:'', monthGoal:8,  timeTag:'PM'},
+    // EVE
+    {id:'7',  name:'Clean Eating (no sweets/chips)',      emoji:'🥗', cat:'Fitness 💪🏽',                 cadence:'daily', freq:7, note:'', monthGoal:20, timeTag:'EVE'},
+    {id:'8',  name:'No phone after 10pm',                 emoji:'🌙', cat:'General',                    cadence:'daily', freq:7, note:'', monthGoal:16, timeTag:'EVE'},
+    {id:'9',  name:'About Social Media',                  emoji:'📱', cat:'Social Media 📱',            cadence:'daily', freq:7, note:'', monthGoal:10, timeTag:'EVE'},
+    {id:'10', name:'About Siquijor / Lazi Plans',         emoji:'🗺️', cat:'Learn 🙇🏽‍♂️',                  cadence:'daily', freq:7, note:'', monthGoal:12, timeTag:'EVE'},
+    {id:'11', name:'Read a book',                         emoji:'📖', cat:'General',                    cadence:'daily', freq:7, note:'', monthGoal:20, timeTag:'EVE'},
+    {id:'12', name:'Career',                              emoji:'💼', cat:'Learn 🙇🏽‍♂️',                  cadence:'daily', freq:7, note:'', monthGoal:8,  timeTag:'EVE'},
+    // WE (weekend-leaning)
+    {id:'13', name:'Track Expenses',                      emoji:'💰', cat:'Finances 💰',                cadence:'daily', freq:7, note:'', monthGoal:4,  timeTag:'WE'},
+    {id:'14', name:'Catch up with a friend',              emoji:'👥', cat:'Relationships 👨🏼‍🤝‍👨🏽',         cadence:'daily', freq:7, note:'', monthGoal:6,  timeTag:'WE'},
+    {id:'15', name:'Outdoors / Nature / Self Work',       emoji:'🌳', cat:'Fitness 💪🏽',                 cadence:'daily', freq:7, note:'', monthGoal:4,  timeTag:'WE'},
+    // Others
+    {id:'16', name:'No Porn / No JO / No App',            emoji:'🚫', cat:'General',                    cadence:'daily', freq:7, note:'', monthGoal:20, timeTag:'Others'},
   ];
 
   const DEFAULT_SETTINGS = { morningReminder: true, eveningReview: false };
@@ -540,9 +679,34 @@
   }
 
   /* ──────── State ──────── */
-  const EMOJIS = ['🧘','🏃','💧','📖','🥗','😴','✍️','🎨','🎵','🧹','💊','🌿','☀️','🚴','🧠','🫁','🤸','🛁'];
-  const CATS = ['Health','Mind','Work','Personal','Other'];
+  const EMOJIS = [
+    '🧘','🏃','💧','📖','🥗','😴','✍️','🎨','🎵','🧹','💊','🌿','☀️','🚴',
+    '🧠','🫁','🤸','🛁','🏋️','🌙','📱','🗺️','💼','💰','👥','🌳','🚫',
+  ];
+  const CATS = [
+    'General',
+    'Fitness 💪🏽',
+    'Social Media 📱',
+    'Learn 🙇🏽‍♂️',
+    'Finances 💰',
+    'Relationships 👨🏼‍🤝‍👨🏽',
+  ];
+  const TIME_TAGS = ['AM', 'PM', 'EVE', 'WE', 'Others'];
+  const TIME_TAG_ORDER = { AM: 0, PM: 1, EVE: 2, WE: 3, Others: 4 };
   const DAYS = ['M','T','W','T','F','S','S'];
+
+  // Stable sort by time tag (preserves array order within the same tag,
+  // so user-added "Others" habits keep insertion order).
+  function sortHabits(arr) {
+    return arr
+      .map((h, i) => ({ h, i }))
+      .sort((a, b) => {
+        const ta = TIME_TAG_ORDER[a.h.timeTag] ?? 4;
+        const tb = TIME_TAG_ORDER[b.h.timeTag] ?? 4;
+        return ta - tb || a.i - b.i;
+      })
+      .map((x) => x.h);
+  }
 
   let habits = loadJSON(STORAGE.HABITS, DEFAULT_HABITS);
   let logs = loadJSON(STORAGE.LOGS, {}); // { 'YYYY-MM-DD': [habitId, ...] }
@@ -556,9 +720,13 @@
   let skipQueue = [];
   let editId = null;
   let selectedEmoji = EMOJIS[0];
-  let selectedCat = 'Health';
+  let selectedCat = CATS[0];
+  let selectedTag = '';            // '' | 'AM' | 'PM' | 'EVE' | 'WE' | 'Others'
   let selectedCadence = 'daily';
   let freq = 3;
+  let monthGoal = 0;
+  let viewMode = 'deck';            // 'deck' | 'list'
+  let lastSeenDay = null;            // set on boot; used to detect midnight rollover
 
   function getDoneToday() {
     return logs[todayKey()] || [];
@@ -604,44 +772,104 @@
     const closedEl = document.getElementById('closed-screen');
     const swipeBtns = document.getElementById('swipe-buttons');
     const endDayRow = document.getElementById('end-day-row');
+    const listView = document.getElementById('today-list-view');
+    const viewToggle = document.getElementById('view-toggle');
 
     // Day closed → show closed view, hide everything else
     if (isDayClosed()) {
       completionEl.classList.remove('visible');
       closedEl.classList.add('visible');
-      area.style.display = 'none';       // hide the deck area + its ghost cards
+      area.style.display = 'none';
+      listView.classList.remove('visible');
       swipeBtns.style.display = 'none';
       endDayRow.style.display = 'none';
+      viewToggle.style.display = 'none';
       renderClosedView();
       return;
     }
-
     closedEl.classList.remove('visible');
 
     // All done → celebration screen
     if (stack.length === 0) {
       completionEl.classList.add('visible');
-      area.style.display = 'none';       // hide the deck area + its ghost cards
+      area.style.display = 'none';
+      listView.classList.remove('visible');
       swipeBtns.style.display = 'none';
       endDayRow.style.display = 'none';
-      document.getElementById('summary-pills').innerHTML = habits.map(h => `<div class="summary-pill">${h.emoji} ${h.name}</div>`).join('');
-      // Fire-and-forget: fetch a personalized affirmation from /api/congrats
-      // (cached per day; falls back to a first-person template on error).
+      viewToggle.style.display = 'none';
+      document.getElementById('summary-pills').innerHTML = sortHabits(habits)
+        .map(h => `<div class="summary-pill">${h.emoji} ${h.name}</div>`).join('');
       loadCongratsMessage();
       return;
     }
 
-    // Normal deck
+    // Normal — show selected view
     completionEl.classList.remove('visible');
-    area.style.display = '';             // restore the deck area for swiping
-    swipeBtns.style.display = '';
-    endDayRow.style.display = habits.length > 0 ? 'flex' : 'none';
+    viewToggle.style.display = '';
+    endDayRow.style.display = 'flex';
     updateEndDayLabel();
-    const card = createCard(stack[0]);
-    card.style.zIndex = 10;
-    area.appendChild(card);
-    initSwipe(card, stack[0]);
+
+    if (viewMode === 'list') {
+      area.style.display = 'none';
+      swipeBtns.style.display = 'none';
+      listView.classList.add('visible');
+      viewToggle.classList.add('active');
+      renderTodayList();
+    } else {
+      listView.classList.remove('visible');
+      area.style.display = '';
+      swipeBtns.style.display = '';
+      viewToggle.classList.remove('active');
+      const card = createCard(stack[0]);
+      card.style.zIndex = 10;
+      area.appendChild(card);
+      initSwipe(card, stack[0]);
+    }
   }
+
+  /* ──────── List view (manual tick) ──────── */
+  function renderTodayList() {
+    const container = document.getElementById('today-list-view');
+    const done = getDoneToday();
+    container.innerHTML = sortHabits(habits).map(h => {
+      const isDone = done.includes(h.id);
+      const tag = h.timeTag ? `<span class="today-list-tag">${h.timeTag}</span>` : '';
+      const sub = [h.cat, h.monthGoal ? `${h.monthGoal}/mo` : null].filter(Boolean).join(' · ');
+      return `<div class="today-list-row${isDone ? ' done' : ''}" data-id="${h.id}">
+        <div class="today-list-emoji">${h.emoji}</div>
+        <div class="today-list-info">
+          <div class="today-list-name">${tag}<span>${escapeHtml(h.name)}</span></div>
+          <div class="today-list-sub">${escapeHtml(sub)}</div>
+        </div>
+        <div class="today-list-check">✓</div>
+      </div>`;
+    }).join('');
+    container.querySelectorAll('.today-list-row').forEach(row => {
+      row.onclick = () => toggleHabitDone(row.dataset.id);
+    });
+  }
+
+  function toggleHabitDone(habitId) {
+    const key = todayKey();
+    const log = logs[key] ? [...logs[key]] : [];
+    const idx = log.indexOf(habitId);
+    if (idx >= 0) log.splice(idx, 1);
+    else log.push(habitId);
+    logs[key] = log;
+    saveJSON(STORAGE.LOGS, logs);
+    // Drop from skipQueue so an unchecked habit returns to the front of the deck
+    if (idx < 0) skipQueue = skipQueue.filter(id => id !== habitId);
+    initStack();
+  }
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    renderStack();
+  }
+
+  document.getElementById('view-toggle').onclick = () => {
+    setViewMode(viewMode === 'deck' ? 'list' : 'deck');
+  };
 
   function updateEndDayLabel() {
     const total = habits.length;
@@ -764,19 +992,31 @@
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  function cadenceDisplay(habit) {
+    if (habit.monthGoal) return `${habit.monthGoal} per month`;
+    if (habit.cadence === 'daily') return 'Every day';
+    if (habit.cadence === 'monthly') return 'Monthly';
+    return `${habit.freq}× per week`;
+  }
+
+  function pillDisplay(habit) {
+    // Combined "AM · GENERAL" pill, or just category if no tag
+    const cat = (habit.cat || '').toUpperCase();
+    return habit.timeTag ? `${habit.timeTag} · ${cat}` : cat;
+  }
+
   function createCard(habit) {
     const el = document.createElement('div');
     el.className = 'habit-card';
     el.dataset.id = habit.id;
-    const f = habit.cadence === 'daily' ? 'Every day' : habit.cadence === 'monthly' ? 'Monthly' : `${habit.freq}× per week`;
     el.innerHTML = `
       <div class="card-emoji-area">
         <div class="card-emoji-bg">${habit.emoji}</div>
-        <div class="card-category-pill">${escapeHtml(habit.cat)}</div>
+        <div class="card-category-pill">${escapeHtml(pillDisplay(habit))}</div>
       </div>
       <div class="card-body">
         <div class="card-name">${escapeHtml(habit.name)}</div>
-        <div class="card-cadence">${f}</div>
+        <div class="card-cadence">${cadenceDisplay(habit)}</div>
         ${habit.note ? `<div class="card-notes">${escapeHtml(habit.note)}</div>` : ''}
       </div>
       <div class="swipe-indicators">
@@ -1020,12 +1260,24 @@
     document.getElementById('heatmap').innerHTML = cells.join('');
   }
 
+  // Dates from the 1st of the current month up to today (inclusive)
+  function getCurrentMonthDates() {
+    const now = new Date();
+    const out = [];
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    while (d <= now) {
+      out.push(d.toISOString().split('T')[0]);
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+
   function renderHabitDashRows() {
-    const last30 = getLastDates(30);
-    document.getElementById('habit-dash-rows').innerHTML = habits.map(h => {
-      const done30 = last30.filter(k => (logs[k] || []).includes(h.id)).length;
-      const pct = Math.round(done30 / 30 * 100);
-      // habit streak
+    const monthDates = getCurrentMonthDates();
+    document.getElementById('habit-dash-rows').innerHTML = sortHabits(habits).map(h => {
+      // This-month completions
+      const doneThisMonth = monthDates.filter(k => (logs[k] || []).includes(h.id)).length;
+      // Streak (consecutive days, including today)
       let hStreak = 0;
       for (let i = 0; i < 365; i++) {
         const d = new Date();
@@ -1034,13 +1286,20 @@
         if ((logs[k] || []).includes(h.id)) hStreak++;
         else break;
       }
+
+      const goal = h.monthGoal || 0;
+      const rightText = goal > 0 ? `${doneThisMonth} / ${goal}` : `${doneThisMonth}`;
+      const onTrack = goal > 0 && doneThisMonth >= goal;
+      const pillClass = onTrack ? 'habit-pct habit-pct-met' : 'habit-pct';
+      const tag = h.timeTag ? `<span class="habit-row-tag">${h.timeTag}</span>` : '';
+
       return `<div class="habit-row-dash">
         <div class="habit-emoji-sm">${h.emoji}</div>
         <div class="habit-info">
-          <div class="habit-name-sm">${escapeHtml(h.name)}</div>
-          <div class="habit-streak">${hStreak} day streak</div>
+          <div class="habit-name-sm">${tag}${escapeHtml(h.name)}</div>
+          <div class="habit-streak">${hStreak} day streak${goal > 0 ? ' · ' + Math.round(doneThisMonth/goal*100) + '%' : ''}</div>
         </div>
-        <div class="habit-pct">${pct}%</div>
+        <div class="${pillClass}">${rightText}</div>
       </div>`;
     }).join('');
   }
@@ -1055,12 +1314,17 @@
 
   /* ──────── Habits manage ──────── */
   function renderHabitsList() {
-    document.getElementById('habits-manage-list').innerHTML = habits.map(h => {
-      const badge = h.cadence === 'daily' ? 'Daily' : h.cadence === 'monthly' ? 'Monthly' : `${h.freq}×/week`;
+    document.getElementById('habits-manage-list').innerHTML = sortHabits(habits).map(h => {
+      const badge = h.monthGoal
+        ? `${h.monthGoal}/mo`
+        : h.cadence === 'daily' ? 'Daily'
+        : h.cadence === 'monthly' ? 'Monthly'
+        : `${h.freq}×/week`;
+      const tag = h.timeTag ? `<span class="habit-manage-tag">${h.timeTag}</span>` : '';
       return `<div class="habit-manage-row" data-id="${h.id}">
         <div class="habit-emoji-med">${h.emoji}</div>
         <div class="habit-manage-info">
-          <div class="habit-manage-name">${escapeHtml(h.name)}</div>
+          <div class="habit-manage-name">${tag}${escapeHtml(h.name)}</div>
           <div class="habit-manage-sub">${escapeHtml(h.cat)}</div>
         </div>
         <div class="habit-manage-badge">${badge}</div>
@@ -1078,7 +1342,12 @@
     document.getElementById('habit-name-input').value = '';
     document.getElementById('habit-note-input').value = '';
     document.getElementById('sheet-delete').style.display = 'none';
-    selectedEmoji = EMOJIS[0]; selectedCat = 'Health'; selectedCadence = 'daily'; freq = 3;
+    selectedEmoji = EMOJIS[0];
+    selectedCat = CATS[0];
+    selectedTag = '';
+    selectedCadence = 'daily';
+    freq = 3;
+    monthGoal = 0;
     renderSheetControls();
     document.getElementById('sheet-overlay').classList.add('open');
   }
@@ -1090,7 +1359,12 @@
     document.getElementById('habit-name-input').value = h.name;
     document.getElementById('habit-note-input').value = h.note || '';
     document.getElementById('sheet-delete').style.display = '';
-    selectedEmoji = h.emoji; selectedCat = h.cat; selectedCadence = h.cadence; freq = h.freq || 3;
+    selectedEmoji = h.emoji;
+    selectedCat = h.cat;
+    selectedTag = h.timeTag || '';
+    selectedCadence = h.cadence;
+    freq = h.freq || 3;
+    monthGoal = h.monthGoal || 0;
     renderSheetControls();
     document.getElementById('sheet-overlay').classList.add('open');
   }
@@ -1102,20 +1376,33 @@
       b.onclick = () => { selectedEmoji = b.dataset.emoji; renderSheetControls(); };
     });
     document.getElementById('cat-row').innerHTML = CATS.map(c =>
-      `<div class="cat-btn${c === selectedCat ? ' selected' : ''}" data-cat="${c}">${c}</div>`
+      `<div class="cat-btn${c === selectedCat ? ' selected' : ''}" data-cat="${c}">${escapeHtml(c)}</div>`
     ).join('');
-    document.querySelectorAll('.cat-btn').forEach(b => {
+    document.querySelectorAll('#cat-row .cat-btn').forEach(b => {
       b.onclick = () => { selectedCat = b.dataset.cat; renderSheetControls(); };
+    });
+    document.getElementById('tag-row').innerHTML = TIME_TAGS.map(t =>
+      `<div class="cat-btn${t === selectedTag ? ' selected' : ''}" data-tag="${t}">${t}</div>`
+    ).join('');
+    document.querySelectorAll('#tag-row .cat-btn').forEach(b => {
+      b.onclick = () => {
+        // Tap-again to clear → makes the tag optional
+        selectedTag = (selectedTag === b.dataset.tag) ? '' : b.dataset.tag;
+        renderSheetControls();
+      };
     });
     document.querySelectorAll('.cadence-btn').forEach(b => {
       b.classList.toggle('selected', b.dataset.cadence === selectedCadence);
       b.onclick = () => { selectedCadence = b.dataset.cadence; renderSheetControls(); };
     });
     document.getElementById('freq-val').textContent = freq;
+    document.getElementById('goal-val').textContent = monthGoal;
     document.getElementById('weekly-freq-group').style.display = selectedCadence === 'weekly' ? '' : 'none';
   }
   document.getElementById('freq-minus').onclick = () => { freq = Math.max(1, freq - 1); document.getElementById('freq-val').textContent = freq; };
   document.getElementById('freq-plus').onclick = () => { freq = Math.min(7, freq + 1); document.getElementById('freq-val').textContent = freq; };
+  document.getElementById('goal-minus').onclick = () => { monthGoal = Math.max(0, monthGoal - 1); document.getElementById('goal-val').textContent = monthGoal; };
+  document.getElementById('goal-plus').onclick = () => { monthGoal = Math.min(31, monthGoal + 1); document.getElementById('goal-val').textContent = monthGoal; };
 
   document.getElementById('sheet-overlay').addEventListener('click', (e) => {
     if (e.target.id === 'sheet-overlay') document.getElementById('sheet-overlay').classList.remove('open');
@@ -1125,11 +1412,21 @@
     const name = document.getElementById('habit-name-input').value.trim();
     if (!name) { document.getElementById('habit-name-input').focus(); return; }
     const note = document.getElementById('habit-note-input').value.trim();
+    const fields = {
+      name,
+      emoji: selectedEmoji,
+      cat: selectedCat,
+      cadence: selectedCadence,
+      freq,
+      note,
+      monthGoal: monthGoal > 0 ? monthGoal : 0,
+      timeTag: selectedTag || '',
+    };
     if (editId) {
       const h = habits.find(x => x.id === editId);
-      if (h) Object.assign(h, { name, emoji: selectedEmoji, cat: selectedCat, cadence: selectedCadence, freq, note });
+      if (h) Object.assign(h, fields);
     } else {
-      habits.push({ id: String(Date.now()), name, emoji: selectedEmoji, cat: selectedCat, cadence: selectedCadence, freq, note });
+      habits.push({ id: String(Date.now()), ...fields });
     }
     saveJSON(STORAGE.HABITS, habits);
     document.getElementById('sheet-overlay').classList.remove('open');
@@ -1218,6 +1515,49 @@
     document.getElementById('today-greeting').textContent = greeting;
   }
 
+  /* ──────── Midnight rollover ──────── */
+  // When the local date flips, refresh the deck and dashboard so today's
+  // log starts empty. Belt-and-braces approach:
+  //   1. setTimeout for the precise next-midnight moment (catches users
+  //      who leave the tab open).
+  //   2. visibilitychange + focus handlers — devices throttle background
+  //      timers, so an open-but-backgrounded tab might miss the timer,
+  //      but the moment the user returns we re-check todayKey() against
+  //      lastSeenDay and refresh if they differ.
+  let midnightTimer = null;
+  function scheduleMidnightRefresh() {
+    if (midnightTimer) clearTimeout(midnightTimer);
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1, 0);
+    const ms = tomorrow.getTime() - now.getTime();
+    midnightTimer = setTimeout(() => {
+      onDayChange();
+      scheduleMidnightRefresh();
+    }, ms);
+  }
+
+  function onDayChange() {
+    const newDay = todayKey();
+    if (newDay === lastSeenDay) return;
+    lastSeenDay = newDay;
+    // Fresh day — clear the in-memory skip queue and re-render
+    skipQueue = [];
+    setHeader();
+    initStack();
+    // If user is on Dashboard, re-render so it reflects the new month-to-date
+    if (document.getElementById('screen-dash').classList.contains('active')) {
+      renderDash();
+    }
+    if (document.getElementById('screen-settings').classList.contains('active')) {
+      renderSettings();
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') onDayChange();
+  });
+  window.addEventListener('focus', onDayChange);
+
   /* ──────── PWA install + service worker ──────── */
   let deferredInstall = null;
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -1243,8 +1583,10 @@
   }
 
   /* ──────── Boot ──────── */
+  lastSeenDay = todayKey();
   setHeader();
   initStack();
+  scheduleMidnightRefresh();
 </script>
 </body>
 </html>
