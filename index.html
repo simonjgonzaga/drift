@@ -119,6 +119,43 @@
     }
     .today-list-view::-webkit-scrollbar { display: none; }
     .today-list-view.visible { display: block; }
+    .list-date-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      background: var(--card-white);
+      border: 0.5px solid var(--border);
+      border-radius: 12px;
+    }
+    .list-date-label {
+      flex: 1;
+      text-align: center;
+      font-family: var(--body);
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .date-nav {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--warm-bg);
+      border: 0.5px solid var(--border);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 150ms ease;
+    }
+    .date-nav:active { opacity: 0.6; }
+    .date-nav:disabled { opacity: 0.25; cursor: default; }
     .today-list-row {
       display: flex;
       align-items: center;
@@ -421,7 +458,14 @@
       <div class="stack-ghost" style="transform:translateY(10px) scale(0.94);opacity:0.4;z-index:0;"></div>
       <div class="stack-ghost" style="transform:translateY(5px) scale(0.97);opacity:0.7;z-index:1;"></div>
     </div>
-    <div class="today-list-view" id="today-list-view"></div>
+    <div class="today-list-view" id="today-list-view">
+      <div class="list-date-row">
+        <button class="date-nav" id="date-prev" aria-label="Previous day">‹</button>
+        <span class="list-date-label" id="list-date-label">Today</span>
+        <button class="date-nav" id="date-next" aria-label="Next day">›</button>
+      </div>
+      <div class="list-rows" id="list-rows"></div>
+    </div>
     <div class="completion-screen" id="completion-screen">
       <div class="completion-orb">🌿</div>
       <div class="completion-affirmation" id="completion-affirmation"></div>
@@ -726,7 +770,34 @@
   let freq = 3;
   let monthGoal = 0;
   let viewMode = 'deck';            // 'deck' | 'list'
+  let viewDate = null;               // YYYY-MM-DD; null means "today"; set when navigating history in list view
   let lastSeenDay = null;            // set on boot; used to detect midnight rollover
+
+  function getViewDate() { return viewDate || todayKey(); }
+  function isViewingToday() { return getViewDate() === todayKey(); }
+
+  function shiftViewDate(days) {
+    // Use noon to avoid DST edge cases when adding/subtracting days
+    const d = new Date(getViewDate() + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    const next = d.toISOString().split('T')[0];
+    if (next > todayKey()) return;       // can't go past today
+    if (next < '2020-01-01') return;     // sanity floor
+    viewDate = (next === todayKey()) ? null : next;
+    renderTodayList();
+  }
+
+  function formatViewDate() {
+    const view = getViewDate();
+    const today = todayKey();
+    if (view === today) return 'Today';
+    const v = new Date(view + 'T12:00:00');
+    const t = new Date(today + 'T12:00:00');
+    const diff = Math.round((t - v) / (1000 * 60 * 60 * 24));
+    const datePart = v.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    if (diff === 1) return `Yesterday · ${datePart}`;
+    return datePart;
+  }
 
   function getDoneToday() {
     return logs[todayKey()] || [];
@@ -806,7 +877,8 @@
     // Normal — show selected view
     completionEl.classList.remove('visible');
     viewToggle.style.display = '';
-    endDayRow.style.display = 'flex';
+    // End-day only matters for today; hide it when browsing past days in list view
+    endDayRow.style.display = (viewMode === 'list' && !isViewingToday()) ? 'none' : 'flex';
     updateEndDayLabel();
 
     if (viewMode === 'list') {
@@ -827,11 +899,17 @@
     }
   }
 
-  /* ──────── List view (manual tick) ──────── */
+  /* ──────── List view (manual tick + history) ──────── */
   function renderTodayList() {
-    const container = document.getElementById('today-list-view');
-    const done = getDoneToday();
-    container.innerHTML = sortHabits(habits).map(h => {
+    const date = getViewDate();
+    const done = logs[date] || [];
+
+    // Date row
+    document.getElementById('list-date-label').textContent = formatViewDate();
+    document.getElementById('date-next').disabled = isViewingToday();
+
+    // Rows
+    document.getElementById('list-rows').innerHTML = sortHabits(habits).map(h => {
       const isDone = done.includes(h.id);
       const tag = h.timeTag ? `<span class="today-list-tag">${h.timeTag}</span>` : '';
       const sub = [h.cat, h.monthGoal ? `${h.monthGoal}/mo` : null].filter(Boolean).join(' · ');
@@ -844,32 +922,41 @@
         <div class="today-list-check">✓</div>
       </div>`;
     }).join('');
-    container.querySelectorAll('.today-list-row').forEach(row => {
+    document.querySelectorAll('#list-rows .today-list-row').forEach(row => {
       row.onclick = () => toggleHabitDone(row.dataset.id);
     });
   }
 
   function toggleHabitDone(habitId) {
-    const key = todayKey();
-    const log = logs[key] ? [...logs[key]] : [];
+    const date = getViewDate();
+    const log = logs[date] ? [...logs[date]] : [];
     const idx = log.indexOf(habitId);
     if (idx >= 0) log.splice(idx, 1);
     else log.push(habitId);
-    logs[key] = log;
+    logs[date] = log;
     saveJSON(STORAGE.LOGS, logs);
-    // Drop from skipQueue so an unchecked habit returns to the front of the deck
-    if (idx < 0) skipQueue = skipQueue.filter(id => id !== habitId);
-    initStack();
+
+    if (date === todayKey()) {
+      // Today — re-render everything so the deck stays in sync
+      if (idx < 0) skipQueue = skipQueue.filter(id => id !== habitId);
+      initStack();
+    } else {
+      // Past day — just re-render the list rows; deck doesn't apply
+      renderTodayList();
+    }
   }
 
   function setViewMode(mode) {
     viewMode = mode;
+    viewDate = null; // always start in list view on today; user can navigate back from there
     renderStack();
   }
 
   document.getElementById('view-toggle').onclick = () => {
     setViewMode(viewMode === 'deck' ? 'list' : 'deck');
   };
+  document.getElementById('date-prev').onclick = () => shiftViewDate(-1);
+  document.getElementById('date-next').onclick = () => shiftViewDate(1);
 
   function updateEndDayLabel() {
     const total = habits.length;
@@ -1133,6 +1220,11 @@
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById('screen-' + tab).classList.add('active');
     document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+    if (tab === 'today') {
+      // Re-entering Today always lands on today, never on a previously-browsed past day
+      viewDate = null;
+      initStack();
+    }
     if (tab === 'dash') renderDash();
     if (tab === 'habits') renderHabitsList();
     if (tab === 'settings') renderSettings();
@@ -1540,8 +1632,9 @@
     const newDay = todayKey();
     if (newDay === lastSeenDay) return;
     lastSeenDay = newDay;
-    // Fresh day — clear the in-memory skip queue and re-render
+    // Fresh day — clear in-memory skip queue, return viewDate to today, re-render
     skipQueue = [];
+    viewDate = null;
     setHeader();
     initStack();
     // If user is on Dashboard, re-render so it reflects the new month-to-date
