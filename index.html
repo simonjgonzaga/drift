@@ -334,6 +334,111 @@
       .completion-affirmation, .summary-pills { transition: none; }
       .completion-orb { animation: none; }
     }
+
+    /* Boot + auth screens (sit above the main app until ready) */
+    .boot-screen, .auth-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--warm-bg);
+      z-index: 1000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      padding-top: calc(var(--safe-top) + 32px);
+      padding-bottom: calc(var(--safe-bottom) + 32px);
+      gap: 16px;
+    }
+    .boot-screen.visible, .auth-screen.visible { display: flex; }
+    .boot-orb {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: var(--sage-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      animation: gentlePulse 2s ease-in-out infinite;
+    }
+    .auth-orb {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: var(--sage-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      margin-bottom: 8px;
+    }
+    .auth-title {
+      font-family: var(--heading);
+      font-size: 40px;
+      font-weight: 500;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+    .auth-subtitle {
+      font-family: var(--body);
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 280px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .auth-form {
+      width: 100%;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .auth-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--card-white);
+      border: 0.5px solid var(--border);
+      border-radius: 10px;
+      font-family: var(--body);
+      font-size: 16px;
+      color: var(--text-primary);
+      outline: none;
+      -webkit-appearance: none;
+    }
+    .auth-input:focus { border-color: var(--sage); }
+    .auth-btn {
+      width: 100%;
+      padding: 16px;
+      background: var(--text-primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-family: var(--body);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 200ms ease;
+    }
+    .auth-btn:active { opacity: 0.85; }
+    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-error {
+      font-family: var(--body);
+      font-size: 13px;
+      color: var(--terracotta);
+      text-align: center;
+      margin-top: 4px;
+    }
+    .auth-footer {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      text-align: center;
+      margin-top: 24px;
+    }
     .summary-pill-missed { padding: 6px 14px; background: var(--terracotta-overlay); border: 0.5px solid var(--terracotta-light); border-radius: 20px; font-size: 13px; color: var(--terracotta); }
 
     /* End-day button + closed-day view */
@@ -435,6 +540,24 @@
   </style>
 </head>
 <body>
+<!-- Boot screen — covers the app while we fetch config and check the auth session -->
+<div class="boot-screen visible" id="boot-screen">
+  <div class="boot-orb">🌿</div>
+</div>
+
+<!-- Auth screen — shown when there's no active Supabase session -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-orb">🌿</div>
+  <div class="auth-title">drift</div>
+  <div class="auth-subtitle" id="auth-subtitle">Sign in with your email. We'll send you a magic link to start your session.</div>
+  <form class="auth-form" id="auth-form">
+    <input type="email" class="auth-input" id="auth-email" placeholder="you@example.com" required autocomplete="email" inputmode="email" />
+    <button type="submit" class="auth-btn" id="auth-btn">Send magic link</button>
+    <div class="auth-error" id="auth-error" style="display:none"></div>
+  </form>
+  <div class="auth-footer">DRIFT · LOCAL-FIRST UI · SUPABASE BACKED</div>
+</div>
+
 <div class="app" id="app">
   <div class="screen active" id="screen-today">
     <div class="safe-top safe-top-row">
@@ -584,6 +707,11 @@
         <div class="setting-row" id="row-export"><div class="setting-row-icon">📤</div><div class="setting-row-label">Export habits</div><div class="setting-row-value">CSV</div></div>
         <div class="setting-row" id="row-reset"><div class="setting-row-icon">🗑</div><div class="setting-row-label" style="color:var(--terracotta)">Reset all data</div></div>
       </div>
+      <div class="setting-section-title">Account</div>
+      <div class="setting-card">
+        <div class="setting-row" id="row-account-email"><div class="setting-row-icon">📧</div><div class="setting-row-label">Signed in as</div><div class="setting-row-value" id="account-email">—</div></div>
+        <div class="setting-row" id="row-signout"><div class="setting-row-icon">🚪</div><div class="setting-row-label">Sign out</div></div>
+      </div>
       <div style="text-align:center;padding:20px 0;font-family:var(--mono);font-size:10px;color:var(--text-muted);letter-spacing:0.06em;">DRIFT v1.0 · local only · no accounts</div>
     </div>
   </div>
@@ -665,14 +793,45 @@
   </div>
 </div>
 
-<script>
-  /* ──────── Storage ──────── */
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+
+  /* ──────── Supabase client (fetched at runtime from /api/config) ──────── */
+  // The Supabase URL and anon key are public-by-design (the anon key ships in
+  // every client; per-user data is protected by Row Level Security in the DB).
+  // We still route through /api/config so the values are env-var driven and
+  // can be rotated without a code change.
+  let supabase = null;
+  try {
+    const cfg = await fetch('./api/config').then(r => r.ok ? r.json() : null);
+    if (!cfg || !cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+      throw new Error('Supabase env vars missing on server (SUPABASE_URL / SUPABASE_ANON_KEY)');
+    }
+    supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,   // picks up magic-link tokens from the URL hash on return
+      },
+    });
+  } catch (err) {
+    console.error('[drift] failed to init Supabase:', err);
+    const boot = document.getElementById('boot-screen');
+    if (boot) {
+      boot.innerHTML =
+        '<div style="text-align:center;font-family:var(--body);color:var(--terracotta);max-width:280px;line-height:1.5;">' +
+        'Supabase isn\'t configured. Add SUPABASE_URL and SUPABASE_ANON_KEY in Vercel and redeploy.' +
+        '</div>';
+    }
+    throw err; // halt the rest of the script
+  }
+
+  /* ──────── localStorage (UI-only state) ──────── */
+  // Settings and the affirmation cache stay device-local — they're UI prefs
+  // and a per-day rate-limit cache, not the canonical record.
   const STORAGE = {
-    HABITS: 'drift:habits',
-    LOGS:   'drift:logs',
     SETTINGS: 'drift:settings',
-    CLOSED: 'drift:closedDays',
-    CONGRATS: 'drift:congrats', // { 'YYYY-MM-DD': affirmation } (legacy key — still used)
+    CONGRATS: 'drift:congrats',
   };
 
   const DEFAULT_HABITS = [
@@ -752,13 +911,156 @@
       .map((x) => x.h);
   }
 
-  let habits = loadJSON(STORAGE.HABITS, DEFAULT_HABITS);
-  let logs = loadJSON(STORAGE.LOGS, {}); // { 'YYYY-MM-DD': [habitId, ...] }
-  let settings = Object.assign({}, DEFAULT_SETTINGS, loadJSON(STORAGE.SETTINGS, {}));
-  let closedDays = loadJSON(STORAGE.CLOSED, []); // ['YYYY-MM-DD', ...]
+  /* ──────── Supabase data access ──────── */
+  // Row mappers — column_case ↔ JS camelCase. The rest of the code thinks in
+  // the in-memory shape (habit.cat, habit.timeTag, habit.monthGoal, ...);
+  // these functions are the only place that knows about DB column names.
+  function rowToHabit(r) {
+    return {
+      id: r.id,
+      name: r.name,
+      emoji: r.emoji || '🌿',
+      cat: r.category || 'General',
+      cadence: r.cadence || 'daily',
+      freq: r.freq || 7,
+      note: r.note || '',
+      monthGoal: r.month_goal || 0,
+      timeTag: r.time_tag || '',
+      dayOfMonth: r.day_of_month || null,
+      sortOrder: r.sort_order || 0,
+    };
+  }
+  function habitToRow(h) {
+    return {
+      name: h.name,
+      emoji: h.emoji,
+      category: h.cat,
+      cadence: h.cadence,
+      freq: h.cadence === 'weekly' ? (h.freq || null) : null,
+      day_of_month: h.cadence === 'monthly' ? (h.dayOfMonth || null) : null,
+      month_goal: h.monthGoal || null,
+      time_tag: h.timeTag || null,
+      note: h.note || null,
+      sort_order: h.sortOrder || 0,
+    };
+  }
 
-  // First-run: persist defaults so the user can edit them
-  if (!localStorage.getItem(STORAGE.HABITS)) saveJSON(STORAGE.HABITS, habits);
+  // All Supabase calls live here so the rest of the code stays focused on
+  // app logic. Writes are fire-and-forget where the UX wants instant feedback
+  // (swipes, ticks); callers can still await them when they need confirmation.
+  const db = {
+    async currentUserId() {
+      const { data } = await supabase.auth.getUser();
+      return data?.user?.id || null;
+    },
+
+    async loadHabits() {
+      const { data, error } = await supabase
+        .from('habits')
+        .select('*')
+        .is('archived_at', null)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data.map(rowToHabit);
+    },
+
+    async loadCompletions(sinceDate) {
+      let q = supabase.from('completions').select('habit_id, completed_at');
+      if (sinceDate) q = q.gte('completed_at', sinceDate);
+      const { data, error } = await q;
+      if (error) throw error;
+      const out = {};
+      for (const r of data) {
+        (out[r.completed_at] = out[r.completed_at] || []).push(r.habit_id);
+      }
+      return out;
+    },
+
+    async loadClosedDays() {
+      const { data, error } = await supabase.from('closed_days').select('day');
+      if (error) throw error;
+      return data.map((r) => r.day);
+    },
+
+    async insertHabit(habit) {
+      const userId = await db.currentUserId();
+      if (!userId) throw new Error('Not signed in');
+      const { data, error } = await supabase
+        .from('habits')
+        .insert({ ...habitToRow(habit), user_id: userId })
+        .select()
+        .single();
+      if (error) throw error;
+      return rowToHabit(data);
+    },
+
+    async updateHabit(id, habit) {
+      const { data, error } = await supabase
+        .from('habits')
+        .update(habitToRow(habit))
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return rowToHabit(data);
+    },
+
+    async archiveHabit(id) {
+      const { error } = await supabase
+        .from('habits')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+
+    async markDone(habitId, date) {
+      const userId = await db.currentUserId();
+      if (!userId) throw new Error('Not signed in');
+      const { error } = await supabase.from('completions').upsert(
+        { habit_id: habitId, completed_at: date, status: 'done', user_id: userId },
+        { onConflict: 'user_id,habit_id,completed_at' }
+      );
+      if (error) throw error;
+    },
+
+    async unmarkDone(habitId, date) {
+      const { error } = await supabase
+        .from('completions')
+        .delete()
+        .eq('habit_id', habitId)
+        .eq('completed_at', date);
+      if (error) throw error;
+    },
+
+    async closeDay(date) {
+      const userId = await db.currentUserId();
+      if (!userId) throw new Error('Not signed in');
+      const { error } = await supabase
+        .from('closed_days')
+        .upsert({ user_id: userId, day: date }, { onConflict: 'user_id,day' });
+      if (error) throw error;
+    },
+
+    async reopenDay(date) {
+      const { error } = await supabase.from('closed_days').delete().eq('day', date);
+      if (error) throw error;
+    },
+
+    async resetAllData() {
+      // RLS scopes deletes to the current user; the always-true filter is
+      // required because Supabase rejects unfiltered .delete() calls.
+      await supabase.from('closed_days').delete().gte('day', '1900-01-01');
+      // Deleting habits cascades to completions via ON DELETE CASCADE
+      await supabase.from('habits').delete().not('id', 'is', null);
+    },
+  };
+
+  /* ──────── In-memory state (hydrated from Supabase in boot()) ──────── */
+  let habits = [];
+  let logs = {};                                                            // { 'YYYY-MM-DD': [habitId, ...] }
+  let settings = Object.assign({}, DEFAULT_SETTINGS, loadJSON(STORAGE.SETTINGS, {}));
+  let closedDays = [];
 
   let stack = [];
   let skipQueue = [];
@@ -802,11 +1104,21 @@
   function getDoneToday() {
     return logs[todayKey()] || [];
   }
+  // Wraps a fire-and-forget Supabase call so UI updates aren't blocked. Errors
+  // surface in the console (and could be promoted to a toast later) but don't
+  // break the optimistic in-memory state.
+  function fireWrite(promise, label) {
+    Promise.resolve(promise).catch(err =>
+      console.error(`[supabase] ${label} failed:`, err)
+    );
+  }
+
   function markDoneToday(habitId) {
     const key = todayKey();
     if (!logs[key]) logs[key] = [];
-    if (!logs[key].includes(habitId)) logs[key].push(habitId);
-    saveJSON(STORAGE.LOGS, logs);
+    if (logs[key].includes(habitId)) return;
+    logs[key].push(habitId);
+    fireWrite(db.markDone(habitId, key), 'markDone');
   }
 
   function isDayClosed(date) {
@@ -814,14 +1126,14 @@
   }
   function closeDay() {
     const k = todayKey();
-    if (!closedDays.includes(k)) {
-      closedDays.push(k);
-      saveJSON(STORAGE.CLOSED, closedDays);
-    }
+    if (closedDays.includes(k)) return;
+    closedDays.push(k);
+    fireWrite(db.closeDay(k), 'closeDay');
   }
   function reopenDay() {
-    closedDays = closedDays.filter(d => d !== todayKey());
-    saveJSON(STORAGE.CLOSED, closedDays);
+    const k = todayKey();
+    closedDays = closedDays.filter(d => d !== k);
+    fireWrite(db.reopenDay(k), 'reopenDay');
   }
 
   /* ──────── Stack & Swipe ──────── */
@@ -931,17 +1243,20 @@
     const date = getViewDate();
     const log = logs[date] ? [...logs[date]] : [];
     const idx = log.indexOf(habitId);
-    if (idx >= 0) log.splice(idx, 1);
-    else log.push(habitId);
-    logs[date] = log;
-    saveJSON(STORAGE.LOGS, logs);
+    if (idx >= 0) {
+      log.splice(idx, 1);
+      logs[date] = log;
+      fireWrite(db.unmarkDone(habitId, date), 'unmarkDone');
+    } else {
+      log.push(habitId);
+      logs[date] = log;
+      fireWrite(db.markDone(habitId, date), 'markDone');
+    }
 
     if (date === todayKey()) {
-      // Today — re-render everything so the deck stays in sync
       if (idx < 0) skipQueue = skipQueue.filter(id => id !== habitId);
       initStack();
     } else {
-      // Past day — just re-render the list rows; deck doesn't apply
       renderTodayList();
     }
   }
@@ -1500,7 +1815,7 @@
     if (e.target.id === 'sheet-overlay') document.getElementById('sheet-overlay').classList.remove('open');
   });
 
-  document.getElementById('sheet-save').onclick = () => {
+  document.getElementById('sheet-save').onclick = async () => {
     const name = document.getElementById('habit-name-input').value.trim();
     if (!name) { document.getElementById('habit-name-input').focus(); return; }
     const note = document.getElementById('habit-note-input').value.trim();
@@ -1513,27 +1828,46 @@
       note,
       monthGoal: monthGoal > 0 ? monthGoal : 0,
       timeTag: selectedTag || '',
+      sortOrder: editId ? (habits.find(h => h.id === editId)?.sortOrder ?? 0) : habits.length,
     };
-    if (editId) {
-      const h = habits.find(x => x.id === editId);
-      if (h) Object.assign(h, fields);
-    } else {
-      habits.push({ id: String(Date.now()), ...fields });
+    const btn = document.getElementById('sheet-save');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      if (editId) {
+        const updated = await db.updateHabit(editId, fields);
+        const i = habits.findIndex(x => x.id === editId);
+        if (i >= 0) habits[i] = updated;
+      } else {
+        const created = await db.insertHabit(fields);
+        habits.push(created);
+      }
+      document.getElementById('sheet-overlay').classList.remove('open');
+      initStack();
+      renderHabitsList();
+    } catch (err) {
+      console.error('[drift] save habit failed', err);
+      alert('Could not save habit: ' + (err.message || err));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save habit';
     }
-    saveJSON(STORAGE.HABITS, habits);
-    document.getElementById('sheet-overlay').classList.remove('open');
-    initStack();
-    renderHabitsList();
   };
 
-  document.getElementById('sheet-delete').onclick = () => {
+  document.getElementById('sheet-delete').onclick = async () => {
     if (!editId) return;
     if (!confirm('Delete this habit? History stays in your logs but the habit is removed.')) return;
-    habits = habits.filter(h => h.id !== editId);
-    saveJSON(STORAGE.HABITS, habits);
-    document.getElementById('sheet-overlay').classList.remove('open');
-    initStack();
-    renderHabitsList();
+    const id = editId;
+    try {
+      await db.archiveHabit(id);
+      habits = habits.filter(h => h.id !== id);
+      document.getElementById('sheet-overlay').classList.remove('open');
+      initStack();
+      renderHabitsList();
+    } catch (err) {
+      console.error('[drift] delete habit failed', err);
+      alert('Could not delete habit: ' + (err.message || err));
+    }
   };
 
   /* ──────── Settings ──────── */
@@ -1576,23 +1910,49 @@
     a.click();
     URL.revokeObjectURL(url);
   };
-  document.getElementById('row-reset').onclick = () => {
-    if (!confirm('Reset all habits and history? This cannot be undone.')) return;
-    localStorage.removeItem(STORAGE.HABITS);
-    localStorage.removeItem(STORAGE.LOGS);
-    localStorage.removeItem(STORAGE.SETTINGS);
-    localStorage.removeItem(STORAGE.CLOSED);
-    localStorage.removeItem(STORAGE.CONGRATS);
-    habits = [...DEFAULT_HABITS];
-    logs = {};
-    settings = { ...DEFAULT_SETTINGS };
-    closedDays = [];
-    saveJSON(STORAGE.HABITS, habits);
-    skipQueue = [];
-    initStack();
-    renderSettings();
-    switchTab('today');
+  document.getElementById('row-reset').onclick = async () => {
+    if (!confirm('Reset all habits and history? This wipes your Supabase data and cannot be undone.')) return;
+    const row = document.getElementById('row-reset');
+    row.style.pointerEvents = 'none';
+    row.style.opacity = '0.5';
+    try {
+      await db.resetAllData();
+      // Clear UI-only caches too
+      localStorage.removeItem(STORAGE.SETTINGS);
+      localStorage.removeItem(STORAGE.CONGRATS);
+      habits = [];
+      logs = {};
+      closedDays = [];
+      settings = { ...DEFAULT_SETTINGS };
+      skipQueue = [];
+      await seedDefaultHabitsIfEmpty();
+      initStack();
+      renderSettings();
+      switchTab('today');
+    } catch (err) {
+      console.error('[drift] reset failed', err);
+      alert('Reset failed: ' + (err.message || err));
+    } finally {
+      row.style.pointerEvents = '';
+      row.style.opacity = '';
+    }
   };
+
+  // Seed the user's table with DEFAULT_HABITS if they have none — used on
+  // first-ever sign-in and after Reset All Data. Inserts one-at-a-time so
+  // a single bad row doesn't abort the whole batch.
+  async function seedDefaultHabitsIfEmpty() {
+    if (habits.length > 0) return;
+    for (let i = 0; i < DEFAULT_HABITS.length; i++) {
+      const seed = DEFAULT_HABITS[i];
+      try {
+        const created = await db.insertHabit({ ...seed, sortOrder: i });
+        habits.push(created);
+      } catch (err) {
+        console.error('[drift] failed to seed', seed.name, err);
+      }
+    }
+  }
 
   /* ──────── Header ──────── */
   function setHeader() {
@@ -1675,11 +2035,143 @@
     });
   }
 
-  /* ──────── Boot ──────── */
-  lastSeenDay = todayKey();
-  setHeader();
-  initStack();
-  scheduleMidnightRefresh();
+  /* ──────── Auth + Boot ──────── */
+  const bootScreen = document.getElementById('boot-screen');
+  const authScreen = document.getElementById('auth-screen');
+  const appRoot = document.getElementById('app');
+
+  function showAuthScreen() {
+    bootScreen.classList.remove('visible');
+    authScreen.classList.add('visible');
+    appRoot.style.visibility = 'hidden';
+    // Reset the form if it was hidden after a successful send
+    const form = document.getElementById('auth-form');
+    if (form) form.style.display = '';
+    const subtitle = document.getElementById('auth-subtitle');
+    if (subtitle) subtitle.textContent = "Sign in with your email. We'll send you a magic link to start your session.";
+    const errEl = document.getElementById('auth-error');
+    if (errEl) errEl.style.display = 'none';
+  }
+
+  function showBootScreen() {
+    authScreen.classList.remove('visible');
+    bootScreen.classList.add('visible');
+    appRoot.style.visibility = 'hidden';
+  }
+
+  function showApp() {
+    bootScreen.classList.remove('visible');
+    authScreen.classList.remove('visible');
+    appRoot.style.visibility = '';
+  }
+
+  // Pulls the data for a signed-in user, seeds defaults if needed, then
+  // hands off to the existing UI. Called on first boot, on sign-in, and
+  // (via onAuthStateChange) on token refresh after returning from a
+  // magic-link redirect.
+  let booted = false;
+  async function bootApp() {
+    if (booted) return;
+    booted = true;
+    showBootScreen();
+    try {
+      // Look back ~13 months so the year heatmap has data
+      const since = new Date();
+      since.setDate(since.getDate() - 400);
+      const sinceKey = since.toISOString().split('T')[0];
+
+      const [h, l, c] = await Promise.all([
+        db.loadHabits(),
+        db.loadCompletions(sinceKey),
+        db.loadClosedDays(),
+      ]);
+      habits = h;
+      logs = l;
+      closedDays = c;
+
+      // First-ever sign-in: seed the user's table with the defaults
+      await seedDefaultHabitsIfEmpty();
+
+      habits = sortHabits(habits);
+
+      // Stamp the account email in Settings
+      const { data: userResp } = await supabase.auth.getUser();
+      const emailEl = document.getElementById('account-email');
+      if (emailEl && userResp?.user?.email) emailEl.textContent = userResp.user.email;
+
+      // Hand off to the existing UI bootstrap
+      lastSeenDay = todayKey();
+      setHeader();
+      initStack();
+      scheduleMidnightRefresh();
+      showApp();
+    } catch (err) {
+      console.error('[drift] boot failed', err);
+      bootScreen.innerHTML =
+        '<div style="text-align:center;font-family:var(--body);color:var(--terracotta);max-width:280px;line-height:1.5;">' +
+        'Could not load your data. ' + ((err && err.message) || '') +
+        '<br><br><a href="' + window.location.pathname + '" style="color:var(--sage);">Try again</a>' +
+        '</div>';
+      booted = false; // allow retry
+    }
+  }
+
+  // Magic-link form
+  document.getElementById('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('auth-email').value.trim();
+    if (!email) return;
+    const btn = document.getElementById('auth-btn');
+    const errEl = document.getElementById('auth-error');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      });
+      if (error) throw error;
+      // Confirmation state
+      document.getElementById('auth-form').style.display = 'none';
+      document.getElementById('auth-subtitle').textContent =
+        'Check ' + email + ' for the sign-in link. Open it on this device to continue.';
+    } catch (err) {
+      console.error('[drift] sign-in failed', err);
+      errEl.textContent = err.message || 'Could not send link. Try again.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send magic link';
+    }
+  });
+
+  // React to auth state changes (sign-in via magic link, manual sign-out, etc.)
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN') {
+      bootApp();
+    } else if (event === 'SIGNED_OUT') {
+      booted = false;
+      habits = []; logs = {}; closedDays = [];
+      showAuthScreen();
+    }
+  });
+
+  // Sign-out from the Settings screen
+  document.getElementById('row-signout').addEventListener('click', async () => {
+    if (!confirm('Sign out of Drift on this device? Your data stays in Supabase.')) return;
+    try { await supabase.auth.signOut(); }
+    catch (err) { console.error('[drift] sign-out failed', err); }
+  });
+
+  // Initial state check — if there's already a session (returning visit, or
+  // a magic-link redirect that detectSessionInUrl just handled), go straight
+  // to the app. Otherwise show the auth screen.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    await bootApp();
+  } else {
+    showAuthScreen();
+  }
 </script>
 </body>
 </html>
