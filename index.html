@@ -447,18 +447,30 @@
       align-items: center;
       gap: 12px;
     }
-    .auth-code-input {
-      text-align: center;
+    .auth-url-input {
       font-family: var(--mono);
-      font-size: 28px;
-      letter-spacing: 0.32em;
-      padding: 18px 16px;
-      font-weight: 500;
+      font-size: 12px;
+      line-height: 1.5;
+      letter-spacing: 0;
+      padding: 14px 16px;
+      resize: none;
+      word-break: break-all;
+      width: 100%;
+      box-sizing: border-box;
     }
-    .auth-code-input::placeholder {
-      letter-spacing: 0.32em;
+    .auth-url-input::placeholder {
       color: var(--text-muted);
+      font-family: var(--body);
+      font-size: 14px;
+      letter-spacing: 0;
     }
+    .auth-paste-btn {
+      background: var(--card-white);
+      color: var(--text-primary);
+      border: 0.5px solid var(--border);
+    }
+    .auth-paste-btn:active { background: var(--warm-bg); }
+    .auth-paste-btn[hidden] { display: none; }
     .auth-link-row {
       display: flex;
       align-items: center;
@@ -591,39 +603,47 @@
   <div class="boot-orb">🌿</div>
 </div>
 
-<!-- Auth screen — two-step OTP flow: email → 6-digit code. The code path is
-     what works for the installed PWA on iOS/Android; the magic link in the
-     same email still works for desktop browsers. -->
+<!-- Auth screen — two-step URL-paste flow: email → paste sign-in link. The
+     PWA can't catch the link click directly (the OS routes HTTPS links to
+     the system browser, which has separate storage), so the user copies
+     the link from the email and pastes it here. The token is extracted
+     and exchanged for a session entirely inside the installed PWA. -->
 <div class="auth-screen" id="auth-screen">
   <div class="auth-orb">🌿</div>
   <div class="auth-title">drift</div>
 
   <!-- Step 1: email entry -->
   <div class="auth-step" id="auth-step-email">
-    <div class="auth-subtitle">Sign in with your email. We'll send you a 6-digit code.</div>
+    <div class="auth-subtitle">Sign in with your email. We'll send you a one-time link.</div>
     <form class="auth-form" id="auth-email-form">
       <input type="email" class="auth-input" id="auth-email-input" placeholder="you@example.com" required autocomplete="email" inputmode="email" />
-      <button type="submit" class="auth-btn" id="auth-email-btn">Send code</button>
+      <button type="submit" class="auth-btn" id="auth-email-btn">Send sign-in link</button>
       <div class="auth-error" id="auth-email-error" style="display:none"></div>
     </form>
   </div>
 
-  <!-- Step 2: code entry -->
+  <!-- Step 2: paste sign-in URL -->
   <div class="auth-step" id="auth-step-code" style="display:none">
-    <div class="auth-subtitle">Enter the 6-digit code we sent to <span id="auth-email-display"></span>.</div>
+    <div class="auth-subtitle">
+      Open the email we sent to <strong id="auth-email-display"></strong>.<br>
+      <span style="color:var(--text-muted);font-size:13px;">
+        Long-press the <strong>Log In</strong> link and tap <strong>Copy Link</strong>. Don't tap the link directly — paste it here instead.
+      </span>
+    </div>
     <form class="auth-form" id="auth-code-form">
-      <input
-        type="text"
-        class="auth-input auth-code-input"
+      <textarea
+        class="auth-input auth-url-input"
         id="auth-code-input"
-        placeholder="••••••"
+        placeholder="Paste the sign-in link here"
+        rows="3"
         required
-        autocomplete="one-time-code"
-        inputmode="numeric"
-        pattern="[0-9]{6}"
-        maxlength="6"
-      />
-      <button type="submit" class="auth-btn" id="auth-code-btn">Verify</button>
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+      ></textarea>
+      <button type="button" class="auth-btn auth-paste-btn" id="auth-paste-btn">Paste from clipboard</button>
+      <button type="submit" class="auth-btn" id="auth-code-btn">Sign in</button>
       <div class="auth-error" id="auth-code-error" style="display:none"></div>
       <div class="auth-link-row">
         <button type="button" class="auth-link" id="auth-edit-email">Use different email</button>
@@ -2188,11 +2208,12 @@
     }
   }
 
-  /* ──────── Two-step OTP auth ──────── */
-  // Step 1: submit email → Supabase sends an email containing both a 6-digit
-  // code AND a magic link. Step 2: user types the code into the PWA, which
-  // calls verifyOtp() to exchange it for a session — entirely within the
-  // installed PWA's storage context, no leaving the app, no browser redirect.
+  /* ──────── Two-step URL-paste auth ──────── */
+  // Step 1: submit email → Supabase sends a magic-link email (default template,
+  // no SMTP config needed). Step 2: user copies the link from the email and
+  // pastes it into the PWA. We extract the token from the URL ourselves and
+  // call verifyOtp() / setSession() — the session lands in the PWA's storage
+  // context, not the system browser's.
 
   let pendingEmail = null;
   let resendTimer = null;
@@ -2209,11 +2230,11 @@
 
     const emailBtn = document.getElementById('auth-email-btn');
     emailBtn.disabled = false;
-    emailBtn.textContent = 'Send code';
+    emailBtn.textContent = 'Send sign-in link';
 
     const codeBtn = document.getElementById('auth-code-btn');
     codeBtn.disabled = false;
-    codeBtn.textContent = 'Verify';
+    codeBtn.textContent = 'Sign in';
 
     document.getElementById('auth-email-error').style.display = 'none';
     document.getElementById('auth-code-error').style.display = 'none';
@@ -2283,11 +2304,11 @@
       }
     } catch (err) {
       console.error('[drift] sendOtp failed', err);
-      errEl.textContent = err.message || 'Could not send code. Try again.';
+      errEl.textContent = err.message || 'Could not send link. Try again.';
       errEl.style.display = 'block';
       if (!fromResend) {
         primaryBtn.disabled = false;
-        primaryBtn.textContent = 'Send code';
+        primaryBtn.textContent = 'Send sign-in link';
       }
     }
   }
@@ -2299,35 +2320,103 @@
     sendOtp(email);
   });
 
+  // Pull a sign-in token out of whatever the user pasted. Supports the two
+  // URL shapes Supabase emits in default magic-link emails:
+  //   PKCE flow:     https://drift.../?token_hash=xxx&type=magiclink
+  //   Implicit flow: https://drift.../#access_token=xxx&refresh_token=xxx&...
+  // Some email clients also wrap or trim the link, so we trim and tolerate
+  // anything pasted.
+  function parseSignInUrl(input) {
+    const raw = (input || '').trim();
+    if (!raw) return null;
+    let url;
+    try { url = new URL(raw); }
+    catch (e) { return { error: "That doesn't look like a URL. Make sure you copied the whole sign-in link from your email." }; }
+
+    const search = new URLSearchParams(url.search);
+    const hash = new URLSearchParams((url.hash || '').replace(/^#/, ''));
+
+    const access_token = hash.get('access_token');
+    const refresh_token = hash.get('refresh_token');
+    if (access_token && refresh_token) {
+      return { mode: 'session', access_token, refresh_token };
+    }
+
+    const token_hash = search.get('token_hash') || search.get('token');
+    const type = search.get('type') || 'magiclink';
+    if (token_hash) {
+      return { mode: 'token', token_hash, type };
+    }
+
+    return { error: "Couldn't find a sign-in token in that link. It may have already been used — tap Resend below for a fresh one." };
+  }
+
   document.getElementById('auth-code-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!pendingEmail) return;
-    const token = document.getElementById('auth-code-input').value.replace(/\s/g, '').trim();
-    if (!token) return;
+    const raw = document.getElementById('auth-code-input').value;
+    const parsed = parseSignInUrl(raw);
 
     const btn = document.getElementById('auth-code-btn');
     const errEl = document.getElementById('auth-code-error');
     errEl.style.display = 'none';
+
+    if (!parsed) return;
+    if (parsed.error) {
+      errEl.textContent = parsed.error;
+      errEl.style.display = 'block';
+      return;
+    }
+
     btn.disabled = true;
-    btn.textContent = 'Verifying…';
+    btn.textContent = 'Signing in…';
 
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: pendingEmail,
-        token,
-        type: 'email',
-      });
-      if (error) throw error;
-      // onAuthStateChange fires SIGNED_IN, which calls bootApp() — UI takes
-      // over from there. Leave the button in its disabled state until then.
+      if (parsed.mode === 'session') {
+        const { error } = await supabase.auth.setSession({
+          access_token: parsed.access_token,
+          refresh_token: parsed.refresh_token,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: parsed.token_hash,
+          type: parsed.type,
+        });
+        if (error) throw error;
+      }
+      // onAuthStateChange fires SIGNED_IN → bootApp() takes over
     } catch (err) {
-      console.error('[drift] verifyOtp failed', err);
-      errEl.textContent = err.message || 'Invalid or expired code. Try again.';
+      console.error('[drift] sign-in failed', err);
+      const msg = err.message || '';
+      errEl.textContent = /expired|invalid/i.test(msg)
+        ? "That link has already been used or expired. Tap Resend below for a fresh one."
+        : (msg || 'Could not sign in. Try again.');
       errEl.style.display = 'block';
       btn.disabled = false;
-      btn.textContent = 'Verify';
+      btn.textContent = 'Sign in';
     }
   });
+
+  // Paste-from-clipboard button — saves a long-press on small phone screens.
+  // Hidden when the Clipboard API isn't available (older browsers / insecure contexts).
+  (function setupPasteButton() {
+    const pasteBtn = document.getElementById('auth-paste-btn');
+    const supported = !!(navigator.clipboard && navigator.clipboard.readText);
+    if (!supported) {
+      pasteBtn.hidden = true;
+      return;
+    }
+    pasteBtn.addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('auth-code-input').value = text;
+      } catch (err) {
+        // Permission denied or no clipboard content — let the user paste manually
+        console.warn('[drift] clipboard read denied', err);
+        document.getElementById('auth-code-input').focus();
+      }
+    });
+  })();
 
   document.getElementById('auth-edit-email').addEventListener('click', resetToEmailStep);
 
