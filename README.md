@@ -32,14 +32,15 @@ you a short personal affirmation.
 2. Open [`supabase/migration.sql`](supabase/migration.sql) from this repo, paste the entire file into the SQL editor, and click **Run**.
 3. You should see "Success. No rows returned." Three tables now exist: `habits`, `completions`, `closed_days` — all locked down with Row Level Security policies that scope rows to `auth.uid()`.
 
-### 3. Configure the magic-link redirect URL
+### 3. Enable Anonymous Sign-ins
 
-1. **Authentication** → **URL Configuration** (left sidebar).
-2. Under **Site URL**, set your Vercel production URL (e.g. `https://drift-yourname.vercel.app`).
-3. Under **Redirect URLs**, add the same URL. Also add `http://localhost:3000` if you'll be running `vercel dev` locally.
-4. Save.
+1. **Authentication** → **Providers** (left sidebar).
+2. Scroll to **Anonymous Sign-ins** and toggle it **on**.
+3. Save.
 
-Without this step, magic-link emails arrive but clicking the link bounces with a redirect-not-allowed error.
+Drift uses anonymous Supabase users — no email, no password, no login UI. The PWA calls `signInAnonymously()` on first boot and stores the session in your installed PWA's localStorage. The auth screen never appears. Each device you install on gets its own anonymous user.
+
+If you ever want cross-device sync later, this can be upgraded to an email-linked account in-place via `supabase.auth.updateUser({ email })` without losing data — but that's deliberately out of scope for now.
 
 ### 4. Add env vars to Vercel
 
@@ -53,11 +54,11 @@ In the **Drift** project on Vercel → **Settings → Environment Variables**, a
 
 After adding env vars: **Deployments tab → ⋯ on latest deploy → Redeploy** so the new values reach the running app.
 
-### 5. Sign in
+### 5. Open the app
 
-Visit your Vercel URL. The app loads to a magic-link screen. Enter your email, click the link in the message Supabase sends, and you're in. The first sign-in seeds the database with the 16 default habits (Meditate, Read, Gym, etc.) — you can edit or delete any of them from the Habits tab.
+Visit your Vercel URL. The boot screen flashes briefly, then the app appears — no login. The PWA created an anonymous Supabase user behind the scenes and seeded your habits with the 16 defaults (Meditate, Read, Gym, etc.). Edit or delete any of them from the Habits tab.
 
-From now on, signing in on any other device with the same email gives you the same data.
+Install the PWA via **Share → Add to Home Screen** (iOS) or **Install** (Android Chrome). The anonymous session persists in the installed PWA's storage across restarts and OS updates.
 
 ## How the data layer works
 

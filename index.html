@@ -335,8 +335,8 @@
       .completion-orb { animation: none; }
     }
 
-    /* Boot + auth screens (sit above the main app until ready) */
-    .boot-screen, .auth-screen {
+    /* Boot screen (covers the app while ensureSession + data-load runs) */
+    .boot-screen {
       display: none;
       position: fixed;
       inset: 0;
@@ -350,7 +350,7 @@
       padding-bottom: calc(var(--safe-bottom) + 32px);
       gap: 16px;
     }
-    .boot-screen.visible, .auth-screen.visible { display: flex; }
+    .boot-screen.visible { display: flex; }
     .boot-orb {
       width: 60px;
       height: 60px;
@@ -361,141 +361,6 @@
       justify-content: center;
       font-size: 30px;
       animation: gentlePulse 2s ease-in-out infinite;
-    }
-    .auth-orb {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: var(--sage-light);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 36px;
-      margin-bottom: 8px;
-    }
-    .auth-title {
-      font-family: var(--heading);
-      font-size: 40px;
-      font-weight: 500;
-      color: var(--text-primary);
-      line-height: 1;
-    }
-    .auth-subtitle {
-      font-family: var(--body);
-      font-size: 14px;
-      color: var(--text-secondary);
-      text-align: center;
-      max-width: 280px;
-      line-height: 1.5;
-      margin-bottom: 12px;
-    }
-    .auth-form {
-      width: 100%;
-      max-width: 320px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .auth-input {
-      width: 100%;
-      padding: 14px 16px;
-      background: var(--card-white);
-      border: 0.5px solid var(--border);
-      border-radius: 10px;
-      font-family: var(--body);
-      font-size: 16px;
-      color: var(--text-primary);
-      outline: none;
-      -webkit-appearance: none;
-    }
-    .auth-input:focus { border-color: var(--sage); }
-    .auth-btn {
-      width: 100%;
-      padding: 16px;
-      background: var(--text-primary);
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-family: var(--body);
-      font-size: 15px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: opacity 200ms ease;
-    }
-    .auth-btn:active { opacity: 0.85; }
-    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .auth-error {
-      font-family: var(--body);
-      font-size: 13px;
-      color: var(--terracotta);
-      text-align: center;
-      margin-top: 4px;
-    }
-    .auth-footer {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-muted);
-      letter-spacing: 0.06em;
-      text-align: center;
-      margin-top: 24px;
-    }
-    .auth-step {
-      width: 100%;
-      max-width: 320px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-    }
-    .auth-url-input {
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.5;
-      letter-spacing: 0;
-      padding: 14px 16px;
-      resize: none;
-      word-break: break-all;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    .auth-url-input::placeholder {
-      color: var(--text-muted);
-      font-family: var(--body);
-      font-size: 14px;
-      letter-spacing: 0;
-    }
-    .auth-paste-btn {
-      background: var(--card-white);
-      color: var(--text-primary);
-      border: 0.5px solid var(--border);
-    }
-    .auth-paste-btn:active { background: var(--warm-bg); }
-    .auth-paste-btn[hidden] { display: none; }
-    .auth-link-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      margin-top: 4px;
-    }
-    .auth-link {
-      background: none;
-      border: none;
-      font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: 0.04em;
-      color: var(--text-muted);
-      cursor: pointer;
-      padding: 6px 4px;
-      -webkit-tap-highlight-color: transparent;
-      transition: color 200ms ease;
-    }
-    .auth-link:active { color: var(--text-primary); }
-    .auth-link:disabled { opacity: 0.4; cursor: not-allowed; }
-    .auth-divider {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
     }
     .summary-pill-missed { padding: 6px 14px; background: var(--terracotta-overlay); border: 0.5px solid var(--terracotta-light); border-radius: 20px; font-size: 13px; color: var(--terracotta); }
 
@@ -603,58 +468,9 @@
   <div class="boot-orb">🌿</div>
 </div>
 
-<!-- Auth screen — two-step URL-paste flow: email → paste sign-in link. The
-     PWA can't catch the link click directly (the OS routes HTTPS links to
-     the system browser, which has separate storage), so the user copies
-     the link from the email and pastes it here. The token is extracted
-     and exchanged for a session entirely inside the installed PWA. -->
-<div class="auth-screen" id="auth-screen">
-  <div class="auth-orb">🌿</div>
-  <div class="auth-title">drift</div>
-
-  <!-- Step 1: email entry -->
-  <div class="auth-step" id="auth-step-email">
-    <div class="auth-subtitle">Sign in with your email. We'll send you a one-time link.</div>
-    <form class="auth-form" id="auth-email-form">
-      <input type="email" class="auth-input" id="auth-email-input" placeholder="you@example.com" required autocomplete="email" inputmode="email" />
-      <button type="submit" class="auth-btn" id="auth-email-btn">Send sign-in link</button>
-      <div class="auth-error" id="auth-email-error" style="display:none"></div>
-    </form>
-  </div>
-
-  <!-- Step 2: paste sign-in URL -->
-  <div class="auth-step" id="auth-step-code" style="display:none">
-    <div class="auth-subtitle">
-      Open the email we sent to <strong id="auth-email-display"></strong>.<br>
-      <span style="color:var(--text-muted);font-size:13px;">
-        Long-press the <strong>Log In</strong> link and tap <strong>Copy Link</strong>. Don't tap the link directly — paste it here instead.
-      </span>
-    </div>
-    <form class="auth-form" id="auth-code-form">
-      <textarea
-        class="auth-input auth-url-input"
-        id="auth-code-input"
-        placeholder="Paste the sign-in link here"
-        rows="3"
-        required
-        autocomplete="off"
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck="false"
-      ></textarea>
-      <button type="button" class="auth-btn auth-paste-btn" id="auth-paste-btn">Paste from clipboard</button>
-      <button type="submit" class="auth-btn" id="auth-code-btn">Sign in</button>
-      <div class="auth-error" id="auth-code-error" style="display:none"></div>
-      <div class="auth-link-row">
-        <button type="button" class="auth-link" id="auth-edit-email">Use different email</button>
-        <span class="auth-divider">·</span>
-        <button type="button" class="auth-link" id="auth-resend">Resend</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="auth-footer">DRIFT · LOCAL-FIRST UI · SUPABASE BACKED</div>
-</div>
+<!-- Auth UI removed: the PWA uses anonymous Supabase sessions, so users
+     never see a sign-in screen. The boot path creates an anonymous user
+     automatically and stores the session in the PWA's localStorage. -->
 
 <div class="app" id="app">
   <div class="screen active" id="screen-today">
@@ -807,8 +623,8 @@
       </div>
       <div class="setting-section-title">Account</div>
       <div class="setting-card">
-        <div class="setting-row" id="row-account-email"><div class="setting-row-icon">📧</div><div class="setting-row-label">Signed in as</div><div class="setting-row-value" id="account-email">—</div></div>
-        <div class="setting-row" id="row-signout"><div class="setting-row-icon">🚪</div><div class="setting-row-label">Sign out</div></div>
+        <div class="setting-row" id="row-account-email"><div class="setting-row-icon">🔒</div><div class="setting-row-label">Session</div><div class="setting-row-value" id="account-email">—</div></div>
+        <div class="setting-row" id="row-signout"><div class="setting-row-icon">🚪</div><div class="setting-row-label">Forget this session</div></div>
       </div>
       <div style="text-align:center;padding:20px 0;font-family:var(--mono);font-size:10px;color:var(--text-muted);letter-spacing:0.06em;">DRIFT v1.0 · local only · no accounts</div>
     </div>
@@ -2135,32 +1951,57 @@
 
   /* ──────── Auth + Boot ──────── */
   const bootScreen = document.getElementById('boot-screen');
-  const authScreen = document.getElementById('auth-screen');
   const appRoot = document.getElementById('app');
 
-  function showAuthScreen() {
-    bootScreen.classList.remove('visible');
-    authScreen.classList.add('visible');
-    appRoot.style.visibility = 'hidden';
-    resetToEmailStep();
-  }
-
   function showBootScreen() {
-    authScreen.classList.remove('visible');
     bootScreen.classList.add('visible');
     appRoot.style.visibility = 'hidden';
   }
 
   function showApp() {
     bootScreen.classList.remove('visible');
-    authScreen.classList.remove('visible');
     appRoot.style.visibility = '';
   }
 
-  // Pulls the data for a signed-in user, seeds defaults if needed, then
-  // hands off to the existing UI. Called on first boot, on sign-in, and
-  // (via onAuthStateChange) on token refresh after returning from a
-  // magic-link redirect.
+  function showBootError(message) {
+    bootScreen.innerHTML =
+      '<div style="text-align:center;font-family:var(--body);color:var(--terracotta);max-width:280px;line-height:1.5;">' +
+      message +
+      '</div>';
+  }
+
+  // Ensure we have a Supabase session, creating an anonymous one if needed.
+  // Returns true on success, false if the project hasn't enabled Anonymous
+  // Sign-ins (in which case we surface a clear error in the boot screen).
+  async function ensureSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) return true;
+    try {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error) throw error;
+      return !!data?.session;
+    } catch (err) {
+      console.error('[drift] anonymous sign-in failed', err);
+      const msg = (err && err.message) || '';
+      if (/anonymous.*(disabled|not.*enabled|provider)/i.test(msg)) {
+        showBootError(
+          'Anonymous sign-ins are not enabled on your Supabase project.<br><br>' +
+          '<span style="color:var(--text-muted);font-size:13px;">' +
+          'Dashboard → Authentication → Providers → toggle "Anonymous Sign-ins" on, then reload.' +
+          '</span>'
+        );
+      } else {
+        showBootError(
+          'Could not start a session: ' + (msg || 'unknown error') +
+          '<br><br><a href="' + window.location.pathname + '" style="color:var(--sage);">Try again</a>'
+        );
+      }
+      return false;
+    }
+  }
+
+  // Pulls the data for the current (anonymous) user, seeds defaults if
+  // their habits table is empty, then hands off to the existing UI.
   let booted = false;
   async function bootApp() {
     if (booted) return;
@@ -2181,17 +2022,23 @@
       logs = l;
       closedDays = c;
 
-      // First-ever sign-in: seed the user's table with the defaults
+      // First-ever boot on this device: seed defaults
       await seedDefaultHabitsIfEmpty();
 
       habits = sortHabits(habits);
 
-      // Stamp the account email in Settings
+      // Settings account label — anonymous users have no email, so show
+      // a description of the session instead.
       const { data: userResp } = await supabase.auth.getUser();
-      const emailEl = document.getElementById('account-email');
-      if (emailEl && userResp?.user?.email) emailEl.textContent = userResp.user.email;
+      const accountEl = document.getElementById('account-email');
+      if (accountEl) {
+        if (userResp?.user?.email) {
+          accountEl.textContent = userResp.user.email;
+        } else {
+          accountEl.textContent = 'Anonymous · this device only';
+        }
+      }
 
-      // Hand off to the existing UI bootstrap
       lastSeenDay = todayKey();
       setHeader();
       initStack();
@@ -2199,259 +2046,55 @@
       showApp();
     } catch (err) {
       console.error('[drift] boot failed', err);
-      bootScreen.innerHTML =
-        '<div style="text-align:center;font-family:var(--body);color:var(--terracotta);max-width:280px;line-height:1.5;">' +
+      showBootError(
         'Could not load your data. ' + ((err && err.message) || '') +
-        '<br><br><a href="' + window.location.pathname + '" style="color:var(--sage);">Try again</a>' +
-        '</div>';
+        '<br><br><a href="' + window.location.pathname + '" style="color:var(--sage);">Try again</a>'
+      );
       booted = false; // allow retry
     }
   }
 
-  /* ──────── Two-step URL-paste auth ──────── */
-  // Step 1: submit email → Supabase sends a magic-link email (default template,
-  // no SMTP config needed). Step 2: user copies the link from the email and
-  // pastes it into the PWA. We extract the token from the URL ourselves and
-  // call verifyOtp() / setSession() — the session lands in the PWA's storage
-  // context, not the system browser's.
+  /* Auth UI removed: anonymous sessions are created automatically in
+     ensureSession() / bootApp(). If we ever want to add an "Upgrade to
+     email-linked account" path, the place to wire it is Settings — see
+     supabase.auth.updateUser({ email }) / linkIdentity(). */
 
-  let pendingEmail = null;
-  let resendTimer = null;
-  let resendSecondsLeft = 0;
-
-  function resetToEmailStep() {
-    pendingEmail = null;
-    if (resendTimer) { clearInterval(resendTimer); resendTimer = null; }
-    resendSecondsLeft = 0;
-
-    document.getElementById('auth-step-email').style.display = '';
-    document.getElementById('auth-step-code').style.display = 'none';
-    document.getElementById('auth-code-input').value = '';
-
-    const emailBtn = document.getElementById('auth-email-btn');
-    emailBtn.disabled = false;
-    emailBtn.textContent = 'Send sign-in link';
-
-    const codeBtn = document.getElementById('auth-code-btn');
-    codeBtn.disabled = false;
-    codeBtn.textContent = 'Sign in';
-
-    document.getElementById('auth-email-error').style.display = 'none';
-    document.getElementById('auth-code-error').style.display = 'none';
-
-    const resendBtn = document.getElementById('auth-resend');
-    resendBtn.disabled = false;
-    resendBtn.textContent = 'Resend';
-  }
-
-  function showCodeStep(email) {
-    pendingEmail = email;
-    document.getElementById('auth-step-email').style.display = 'none';
-    document.getElementById('auth-step-code').style.display = '';
-    document.getElementById('auth-email-display').textContent = email;
-    document.getElementById('auth-code-input').value = '';
-    document.getElementById('auth-code-error').style.display = 'none';
-    // Focus the code input so iOS can offer one-tap autofill from Mail
-    setTimeout(() => document.getElementById('auth-code-input').focus(), 50);
-    startResendCooldown();
-  }
-
-  function startResendCooldown() {
-    resendSecondsLeft = 30;
-    const resendBtn = document.getElementById('auth-resend');
-    resendBtn.disabled = true;
-    resendBtn.textContent = `Resend in ${resendSecondsLeft}s`;
-    if (resendTimer) clearInterval(resendTimer);
-    resendTimer = setInterval(() => {
-      resendSecondsLeft -= 1;
-      if (resendSecondsLeft <= 0) {
-        clearInterval(resendTimer);
-        resendTimer = null;
-        resendBtn.disabled = false;
-        resendBtn.textContent = 'Resend';
-      } else {
-        resendBtn.textContent = `Resend in ${resendSecondsLeft}s`;
-      }
-    }, 1000);
-  }
-
-  async function sendOtp(email, { fromResend = false } = {}) {
-    const errEl = fromResend
-      ? document.getElementById('auth-code-error')
-      : document.getElementById('auth-email-error');
-    const primaryBtn = document.getElementById('auth-email-btn');
-
-    errEl.style.display = 'none';
-    if (!fromResend) {
-      primaryBtn.disabled = true;
-      primaryBtn.textContent = 'Sending…';
-    }
-
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          // Magic link in the email still works as a fallback for desktop users
-          emailRedirectTo: window.location.origin + window.location.pathname,
-        },
-      });
-      if (error) throw error;
-      if (fromResend) {
-        // Stay on code step, just reset the cooldown
-        startResendCooldown();
-      } else {
-        showCodeStep(email);
-      }
-    } catch (err) {
-      console.error('[drift] sendOtp failed', err);
-      errEl.textContent = err.message || 'Could not send link. Try again.';
-      errEl.style.display = 'block';
-      if (!fromResend) {
-        primaryBtn.disabled = false;
-        primaryBtn.textContent = 'Send sign-in link';
-      }
-    }
-  }
-
-  document.getElementById('auth-email-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = document.getElementById('auth-email-input').value.trim();
-    if (!email) return;
-    sendOtp(email);
-  });
-
-  // Pull a sign-in token out of whatever the user pasted. Supports the two
-  // URL shapes Supabase emits in default magic-link emails:
-  //   PKCE flow:     https://drift.../?token_hash=xxx&type=magiclink
-  //   Implicit flow: https://drift.../#access_token=xxx&refresh_token=xxx&...
-  // Some email clients also wrap or trim the link, so we trim and tolerate
-  // anything pasted.
-  function parseSignInUrl(input) {
-    const raw = (input || '').trim();
-    if (!raw) return null;
-    let url;
-    try { url = new URL(raw); }
-    catch (e) { return { error: "That doesn't look like a URL. Make sure you copied the whole sign-in link from your email." }; }
-
-    const search = new URLSearchParams(url.search);
-    const hash = new URLSearchParams((url.hash || '').replace(/^#/, ''));
-
-    const access_token = hash.get('access_token');
-    const refresh_token = hash.get('refresh_token');
-    if (access_token && refresh_token) {
-      return { mode: 'session', access_token, refresh_token };
-    }
-
-    const token_hash = search.get('token_hash') || search.get('token');
-    const type = search.get('type') || 'magiclink';
-    if (token_hash) {
-      return { mode: 'token', token_hash, type };
-    }
-
-    return { error: "Couldn't find a sign-in token in that link. It may have already been used — tap Resend below for a fresh one." };
-  }
-
-  document.getElementById('auth-code-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const raw = document.getElementById('auth-code-input').value;
-    const parsed = parseSignInUrl(raw);
-
-    const btn = document.getElementById('auth-code-btn');
-    const errEl = document.getElementById('auth-code-error');
-    errEl.style.display = 'none';
-
-    if (!parsed) return;
-    if (parsed.error) {
-      errEl.textContent = parsed.error;
-      errEl.style.display = 'block';
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Signing in…';
-
-    try {
-      if (parsed.mode === 'session') {
-        const { error } = await supabase.auth.setSession({
-          access_token: parsed.access_token,
-          refresh_token: parsed.refresh_token,
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: parsed.token_hash,
-          type: parsed.type,
-        });
-        if (error) throw error;
-      }
-      // onAuthStateChange fires SIGNED_IN → bootApp() takes over
-    } catch (err) {
-      console.error('[drift] sign-in failed', err);
-      const msg = err.message || '';
-      errEl.textContent = /expired|invalid/i.test(msg)
-        ? "That link has already been used or expired. Tap Resend below for a fresh one."
-        : (msg || 'Could not sign in. Try again.');
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Sign in';
-    }
-  });
-
-  // Paste-from-clipboard button — saves a long-press on small phone screens.
-  // Hidden when the Clipboard API isn't available (older browsers / insecure contexts).
-  (function setupPasteButton() {
-    const pasteBtn = document.getElementById('auth-paste-btn');
-    const supported = !!(navigator.clipboard && navigator.clipboard.readText);
-    if (!supported) {
-      pasteBtn.hidden = true;
-      return;
-    }
-    pasteBtn.addEventListener('click', async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        document.getElementById('auth-code-input').value = text;
-      } catch (err) {
-        // Permission denied or no clipboard content — let the user paste manually
-        console.warn('[drift] clipboard read denied', err);
-        document.getElementById('auth-code-input').focus();
-      }
-    });
-  })();
-
-  document.getElementById('auth-edit-email').addEventListener('click', resetToEmailStep);
-
-  document.getElementById('auth-resend').addEventListener('click', () => {
-    if (!pendingEmail || resendSecondsLeft > 0) return;
-    sendOtp(pendingEmail, { fromResend: true });
-  });
-
-  // React to auth state changes (sign-in via magic link, manual sign-out, etc.)
-  supabase.auth.onAuthStateChange((event, session) => {
+  // React to auth state changes. With anonymous sessions there's no
+  // "sign-in" event in the normal user-flow sense — signInAnonymously()
+  // fires SIGNED_IN once. SIGNED_OUT means the user tapped "Forget this
+  // session" (see Settings), so we wipe in-memory state and create a fresh
+  // anonymous session to keep the app usable.
+  supabase.auth.onAuthStateChange(async (event) => {
     if (event === 'SIGNED_IN') {
       bootApp();
     } else if (event === 'SIGNED_OUT') {
       booted = false;
       habits = []; logs = {}; closedDays = [];
-      showAuthScreen();
+      showBootScreen();
+      const ok = await ensureSession();
+      if (ok) bootApp();
     }
   });
 
-  // Sign-out from the Settings screen
+  // "Forget this session" — the equivalent of sign-out for an anonymous
+  // session. Useful for testing on a single device. WARNING: this orphans
+  // the data tied to the current anonymous user UUID — the rows still
+  // exist in Supabase but can't be reached without the old session, and
+  // a fresh anonymous user is created on next sign-in.
   document.getElementById('row-signout').addEventListener('click', async () => {
-    if (!confirm('Sign out of Drift on this device? Your data stays in Supabase.')) return;
+    const msg = 'Forget this session and start a fresh one?\n\n' +
+      'Your current habits stay in Supabase but become unreachable from this device. ' +
+      'A new empty session begins.';
+    if (!confirm(msg)) return;
     try { await supabase.auth.signOut(); }
     catch (err) { console.error('[drift] sign-out failed', err); }
   });
 
-  // Initial state check — if there's already a session (returning visit, or
-  // a magic-link redirect that detectSessionInUrl just handled), go straight
-  // to the app. Otherwise show the auth screen.
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    await bootApp();
-  } else {
-    showAuthScreen();
-  }
+  // Boot: ensure a session (creating one anonymously if needed), then load
+  // the app. No login screen — if Anonymous Sign-ins are enabled in the
+  // Supabase project, this is a single round-trip to the auth endpoint.
+  const ok = await ensureSession();
+  if (ok) await bootApp();
 </script>
 </body>
 </html>
