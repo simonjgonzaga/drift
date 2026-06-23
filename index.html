@@ -595,12 +595,12 @@
         <div class="period-tab" data-period="year">Year</div>
       </div>
       <div class="stat-row">
-        <div class="stat-card"><div class="stat-label">Completion</div><div class="stat-value" id="stat-pct">0%</div><div class="stat-sub">this week</div></div>
+        <div class="stat-card"><div class="stat-label">Completion</div><div class="stat-value" id="stat-pct">0%</div><div class="stat-sub" id="stat-pct-period">this week</div></div>
         <div class="stat-card"><div class="stat-label">Streak</div><div class="stat-value" id="stat-streak">0</div><div class="stat-sub">days running</div></div>
       </div>
       <div class="stat-row">
         <div class="stat-card"><div class="stat-label">Best habit</div><div class="stat-value" style="font-size:22px" id="best-habit">🌿</div><div class="stat-sub" id="best-habit-name">—</div></div>
-        <div class="stat-card"><div class="stat-label">Total done</div><div class="stat-value" id="stat-total">0</div><div class="stat-sub">this period</div></div>
+        <div class="stat-card"><div class="stat-label">Total done</div><div class="stat-value" id="stat-total">0</div><div class="stat-sub" id="stat-total-period">this period</div></div>
       </div>
       <div id="chart-area">
         <div class="bar-chart" id="week-chart">
@@ -1542,25 +1542,44 @@
       return d.toISOString().split('T')[0];
     });
   }
+  // Goal-weighted daily completion rate. Each habit contributes
+  // monthGoal/30 to the "expected per day" budget, so a day's rate is
+  // (completions that day) / (sum of daily-equivalent goals across all
+  // habits). Caps at 1 so a day where the user overshoots reads as
+  // 100% rather than 130%.
   function completionRate(dateKey) {
     if (!habits.length) return 0;
     const log = logs[dateKey];
-    if (!log) return 0;
-    return log.length / habits.length;
+    if (!log || log.length === 0) return 0;
+    const dailyGoal = habits.reduce((sum, h) => sum + ((h.monthGoal || 30) / 30), 0);
+    if (dailyGoal <= 0) return 0;
+    return Math.min(1, log.length / dailyGoal);
   }
+
+  // Currently-selected dashboard period. Persists across tab switches.
+  let currentPeriod = 'week';
 
   function renderDash() {
-    renderBars('week');
-    renderHabitDashRows();
-    renderDashStats();
+    // Sync the active-tab visual to whichever period is currently in state
+    document.querySelectorAll('.period-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.period === currentPeriod);
+    });
+    renderBars(currentPeriod);
+    renderHabitDashRows(currentPeriod);
+    renderDashStats(currentPeriod);
   }
-  function renderDashStats() {
-    const week = getLastDates(7);
-    const total = week.reduce((sum, k) => sum + (logs[k]?.length || 0), 0);
-    const maxPossible = 7 * habits.length;
-    const pct = maxPossible ? Math.round(total / maxPossible * 100) : 0;
 
-    // Streak: consecutive days with any completion (today is the most recent)
+  function renderDashStats(period) {
+    const periodDates = getDatesForPeriod(period);
+
+    // Total completions across the period
+    const total = periodDates.reduce((sum, k) => sum + (logs[k]?.length || 0), 0);
+
+    // Goal-weighted denominator — sums each habit's scaled-to-period goal
+    const totalGoal = habits.reduce((sum, h) => sum + scaledGoalForPeriod(h, period), 0);
+    const pct = totalGoal > 0 ? Math.round((total / totalGoal) * 100) : 0;
+
+    // Streak is period-independent — consecutive days with ≥1 completion
     let streak = 0;
     for (let i = 0; i < 365; i++) {
       const d = new Date();
@@ -1570,12 +1589,13 @@
       else break;
     }
 
-    // Best habit (last 30 days)
-    const last30 = getLastDates(30);
-    let best = null, bestRate = -1;
+    // Best habit = highest ratio of done/scaledGoal in the selected period
+    let best = null, bestRatio = -1;
     habits.forEach(h => {
-      const c = last30.filter(k => (logs[k] || []).includes(h.id)).length;
-      if (c > bestRate) { bestRate = c; best = h; }
+      const done = periodDates.filter(k => (logs[k] || []).includes(h.id)).length;
+      const goal = scaledGoalForPeriod(h, period);
+      const ratio = goal > 0 ? done / goal : 0;
+      if (ratio > bestRatio) { bestRatio = ratio; best = h; }
     });
 
     document.getElementById('stat-pct').textContent = pct + '%';
@@ -1583,6 +1603,20 @@
     document.getElementById('stat-total').textContent = total;
     document.getElementById('best-habit').textContent = best ? best.emoji : '🌿';
     document.getElementById('best-habit-name').textContent = best ? best.name : 'none yet';
+    document.getElementById('stat-pct-period').textContent = PERIOD_LABELS[period] || 'this week';
+    document.getElementById('stat-total-period').textContent = PERIOD_LABELS[period] || 'this period';
+  }
+
+  // Average completion rate across the 7 days ending `weeksAgo` weeks back
+  // (0 = current week including today, 1 = the week before, etc.)
+  function weeklyAverageRate(weeksAgo) {
+    let sum = 0;
+    for (let d = 0; d < 7; d++) {
+      const date = new Date();
+      date.setDate(date.getDate() - (weeksAgo * 7 + d));
+      sum += completionRate(date.toISOString().split('T')[0]);
+    }
+    return sum / 7;
   }
 
   function renderBars(period) {
@@ -1597,34 +1631,28 @@
     weekEl.style.display = 'block';
     heatEl.style.display = 'none';
 
-    let dates, dLabels;
+    let data, dLabels;
     if (period === 'week') {
-      dates = getLastDates(7);
+      // 7 daily bars, today on the right
+      data = getLastDates(7).map(k => completionRate(k));
       dLabels = DAYS;
     } else if (period === 'month') {
-      // 4 weeks, aggregated weekly
-      dates = Array.from({ length: 4 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (3 - i) * 7);
-        return d.toISOString().split('T')[0];
-      });
-      dLabels = ['W1','W2','W3','W4'];
+      // 4 weekly aggregates, oldest left, current week on the right
+      data = [3, 2, 1, 0].map(weeklyAverageRate);
+      dLabels = ['4w', '3w', '2w', 'now'];
     } else if (period === 'quarter') {
-      dates = Array.from({ length: 12 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (11 - i) * 7);
-        return d.toISOString().split('T')[0];
-      });
-      dLabels = Array.from({ length: 12 }, (_, i) => String(i + 1));
+      // 13 weekly aggregates (~ one full quarter)
+      data = Array.from({ length: 13 }, (_, i) => weeklyAverageRate(12 - i));
+      dLabels = data.map((_, i) =>
+        i === data.length - 1 ? 'now' : (i === 0 ? '13w' : '')
+      );
     }
 
-    const data = dates.map(k => completionRate(k));
     const maxData = Math.max(...data, 0.01);
-
     document.getElementById('bars').innerHTML = data.map((v, i) => {
       const h = Math.max(4, Math.round((v / maxData) * 80));
-      const isToday = i === data.length - 1 && period === 'week';
-      const bg = isToday ? 'var(--sage)' : 'var(--sage-light)';
+      const isCurrent = i === data.length - 1;
+      const bg = isCurrent ? 'var(--sage)' : 'var(--sage-light)';
       return `<div class="bar-col"><div class="bar-fill" style="height:${h}px;background:${bg}"></div></div>`;
     }).join('');
 
@@ -1665,12 +1693,63 @@
     return out;
   }
 
-  function renderHabitDashRows() {
-    const monthDates = getCurrentMonthDates();
+  // All YYYY-MM-DD keys from a start date up to and including today
+  function getDatesFromStart(start) {
+    const out = [];
+    const today = new Date();
+    const d = new Date(start);
+    while (d <= today) {
+      out.push(d.toISOString().split('T')[0]);
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+
+  // Period → list of date keys covered. "week" is a rolling 7-day window so
+  // it's always meaningful; the others are calendar-aligned to-date so they
+  // match user intuition ("this month" = days 1..today in the current month).
+  function getDatesForPeriod(period) {
+    if (period === 'week') return getLastDates(7);
+    if (period === 'month') return getCurrentMonthDates();
+    if (period === 'quarter') {
+      const now = new Date();
+      const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+      return getDatesFromStart(qStart);
+    }
+    if (period === 'year') {
+      const now = new Date();
+      return getDatesFromStart(new Date(now.getFullYear(), 0, 1));
+    }
+    return getLastDates(7);
+  }
+
+  // Period → human-friendly label for the stat-card sub-text
+  const PERIOD_LABELS = {
+    week:    'this week',
+    month:   'this month',
+    quarter: 'this quarter',
+    year:    'this year',
+  };
+
+  // Scale a habit's monthly goal to the given period. Habits without an
+  // explicit monthGoal are treated as "every day" (30/month equivalent), so
+  // they still contribute a sensible amount to the goal denominator.
+  function scaledGoalForPeriod(habit, period) {
+    const monthly = habit.monthGoal || 30;
+    if (period === 'week')    return monthly * 7 / 30;
+    if (period === 'month')   return monthly;
+    if (period === 'quarter') return monthly * 3;
+    if (period === 'year')    return monthly * 12;
+    return monthly;
+  }
+
+  function renderHabitDashRows(period) {
+    const periodDates = getDatesForPeriod(period || currentPeriod);
     document.getElementById('habit-dash-rows').innerHTML = sortHabits(habits).map(h => {
-      // This-month completions
-      const doneThisMonth = monthDates.filter(k => (logs[k] || []).includes(h.id)).length;
-      // Streak (consecutive days, including today)
+      // Completions in the selected period
+      const done = periodDates.filter(k => (logs[k] || []).includes(h.id)).length;
+
+      // Streak (period-independent — consecutive days, including today)
       let hStreak = 0;
       for (let i = 0; i < 365; i++) {
         const d = new Date();
@@ -1680,17 +1759,20 @@
         else break;
       }
 
-      const goal = h.monthGoal || 0;
-      const rightText = goal > 0 ? `${doneThisMonth} / ${goal}` : `${doneThisMonth}`;
-      const onTrack = goal > 0 && doneThisMonth >= goal;
+      // Period-scaled goal — round so we show "X / 4" not "X / 4.2"
+      const rawGoal = h.monthGoal ? scaledGoalForPeriod(h, period || currentPeriod) : 0;
+      const goal = Math.round(rawGoal);
+      const rightText = goal > 0 ? `${done} / ${goal}` : `${done}`;
+      const onTrack = goal > 0 && done >= goal;
       const pillClass = onTrack ? 'habit-pct habit-pct-met' : 'habit-pct';
       const tag = h.timeTag ? `<span class="habit-row-tag">${h.timeTag}</span>` : '';
+      const pct = goal > 0 ? Math.min(999, Math.round(done / goal * 100)) : 0;
 
       return `<div class="habit-row-dash">
         <div class="habit-emoji-sm">${h.emoji}</div>
         <div class="habit-info">
           <div class="habit-name-sm">${tag}${escapeHtml(h.name)}</div>
-          <div class="habit-streak">${hStreak} day streak${goal > 0 ? ' · ' + Math.round(doneThisMonth/goal*100) + '%' : ''}</div>
+          <div class="habit-streak">${hStreak} day streak${goal > 0 ? ' · ' + pct + '%' : ''}</div>
         </div>
         <div class="${pillClass}">${rightText}</div>
       </div>`;
@@ -1699,9 +1781,9 @@
 
   document.querySelectorAll('.period-tab').forEach(tab => {
     tab.onclick = () => {
-      document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      renderBars(tab.dataset.period);
+      currentPeriod = tab.dataset.period;
+      // Drive everything from the new period — stat cards, per-habit rows, chart
+      renderDash();
     };
   });
 
