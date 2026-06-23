@@ -362,6 +362,44 @@
       font-size: 30px;
       animation: gentlePulse 2s ease-in-out infinite;
     }
+
+    /* Toast — short status pill that appears above the tab bar */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(var(--tab-h) + var(--safe-bottom) + 16px);
+      transform: translateX(-50%) translateY(8px);
+      background: var(--text-primary);
+      color: white;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      padding: 8px 16px;
+      border-radius: 999px;
+      z-index: 900;
+      opacity: 0;
+      transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+      white-space: nowrap;
+      max-width: calc(100vw - 32px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 6px 20px rgba(44,42,37,0.18);
+    }
+    .toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .toast.error {
+      background: var(--terracotta);
+    }
+    .toast.success {
+      background: var(--sage);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .toast { transition: opacity 100ms linear; }
+    }
     .summary-pill-missed { padding: 6px 14px; background: var(--terracotta-overlay); border: 0.5px solid var(--terracotta-light); border-radius: 20px; font-size: 13px; color: var(--terracotta); }
 
     /* End-day button + closed-day view */
@@ -471,6 +509,9 @@
 <!-- Auth UI removed: the PWA uses anonymous Supabase sessions, so users
      never see a sign-in screen. The boot path creates an anonymous user
      automatically and stores the session in the PWA's localStorage. -->
+
+<!-- Toast — short status messages for Supabase write success/failure. -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <div class="app" id="app">
   <div class="screen active" id="screen-today">
@@ -1018,13 +1059,44 @@
   function getDoneToday() {
     return logs[todayKey()] || [];
   }
-  // Wraps a fire-and-forget Supabase call so UI updates aren't blocked. Errors
-  // surface in the console (and could be promoted to a toast later) but don't
-  // break the optimistic in-memory state.
-  function fireWrite(promise, label) {
-    Promise.resolve(promise).catch(err =>
-      console.error(`[supabase] ${label} failed:`, err)
-    );
+  // Small toast that surfaces Supabase write status. Success messages
+  // are opt-in (caller passes successToast); errors are always shown so
+  // silent failures stop being invisible.
+  let toastTimer = null;
+  function showToast(message, options) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    const opts = options || {};
+    el.textContent = message;
+    el.classList.remove('success', 'error');
+    if (opts.kind === 'success') el.classList.add('success');
+    if (opts.kind === 'error') el.classList.add('error');
+    el.classList.add('visible');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.classList.remove('visible');
+    }, opts.duration || 1400);
+  }
+
+  // Wraps a fire-and-forget Supabase call so UI updates aren't blocked.
+  // Always surfaces errors via toast (and console); success toast is opt-in
+  // per call (passed as opts.successToast) so we don't spam confirmations
+  // on every swipe.
+  function fireWrite(promise, label, opts) {
+    const options = opts || {};
+    Promise.resolve(promise)
+      .then(() => {
+        if (options.successToast) {
+          showToast(options.successToast, { kind: 'success' });
+        }
+      })
+      .catch(err => {
+        console.error(`[supabase] ${label} failed:`, err);
+        showToast(
+          options.errorToast || `Couldn't save — check your connection`,
+          { kind: 'error', duration: 4000 }
+        );
+      });
   }
 
   function markDoneToday(habitId) {
@@ -1160,11 +1232,11 @@
     if (idx >= 0) {
       log.splice(idx, 1);
       logs[date] = log;
-      fireWrite(db.unmarkDone(habitId, date), 'unmarkDone');
+      fireWrite(db.unmarkDone(habitId, date), 'unmarkDone', { successToast: 'Unticked · saved' });
     } else {
       log.push(habitId);
       logs[date] = log;
-      fireWrite(db.markDone(habitId, date), 'markDone');
+      fireWrite(db.markDone(habitId, date), 'markDone', { successToast: 'Saved' });
     }
 
     if (date === todayKey()) {
