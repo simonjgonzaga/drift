@@ -335,7 +335,7 @@
       .completion-orb { animation: none; }
     }
 
-    /* Boot screen (covers the app while ensureSession + data-load runs) */
+    /* Boot screen (covers the app while bootApp data-load runs) */
     .boot-screen {
       display: none;
       position: fixed;
@@ -662,11 +662,7 @@
         <div class="setting-row" id="row-export"><div class="setting-row-icon">📤</div><div class="setting-row-label">Export habits</div><div class="setting-row-value">CSV</div></div>
         <div class="setting-row" id="row-reset"><div class="setting-row-icon">🗑</div><div class="setting-row-label" style="color:var(--terracotta)">Reset all data</div></div>
       </div>
-      <div class="setting-section-title">Account</div>
-      <div class="setting-card">
-        <div class="setting-row" id="row-account-email"><div class="setting-row-icon">🔒</div><div class="setting-row-label">Session</div><div class="setting-row-value" id="account-email">—</div></div>
-        <div class="setting-row" id="row-signout"><div class="setting-row-icon">🚪</div><div class="setting-row-label">Forget this session</div></div>
-      </div>
+<!-- Account section removed: single-user mode has no per-user concept. -->
       <div style="text-align:center;padding:20px 0;font-family:var(--mono);font-size:10px;color:var(--text-muted);letter-spacing:0.06em;">DRIFT v1.0 · local only · no accounts</div>
     </div>
   </div>
@@ -904,11 +900,6 @@
   // app logic. Writes are fire-and-forget where the UX wants instant feedback
   // (swipes, ticks); callers can still await them when they need confirmation.
   const db = {
-    async currentUserId() {
-      const { data } = await supabase.auth.getUser();
-      return data?.user?.id || null;
-    },
-
     async loadHabits() {
       const { data, error } = await supabase
         .from('habits')
@@ -939,11 +930,10 @@
     },
 
     async insertHabit(habit) {
-      const userId = await db.currentUserId();
-      if (!userId) throw new Error('Not signed in');
+      // user_id defaults to the fixed zero UUID server-side (single-user mode)
       const { data, error } = await supabase
         .from('habits')
-        .insert({ ...habitToRow(habit), user_id: userId })
+        .insert(habitToRow(habit))
         .select()
         .single();
       if (error) throw error;
@@ -970,10 +960,8 @@
     },
 
     async markDone(habitId, date) {
-      const userId = await db.currentUserId();
-      if (!userId) throw new Error('Not signed in');
       const { error } = await supabase.from('completions').upsert(
-        { habit_id: habitId, completed_at: date, status: 'done', user_id: userId },
+        { habit_id: habitId, completed_at: date, status: 'done' },
         { onConflict: 'user_id,habit_id,completed_at' }
       );
       if (error) throw error;
@@ -989,11 +977,9 @@
     },
 
     async closeDay(date) {
-      const userId = await db.currentUserId();
-      if (!userId) throw new Error('Not signed in');
       const { error } = await supabase
         .from('closed_days')
-        .upsert({ user_id: userId, day: date }, { onConflict: 'user_id,day' });
+        .upsert({ day: date }, { onConflict: 'user_id,day' });
       if (error) throw error;
     },
 
@@ -2124,35 +2110,10 @@
       '</div>';
   }
 
-  // Ensure we have a Supabase session, creating an anonymous one if needed.
-  // Returns true on success, false if the project hasn't enabled Anonymous
-  // Sign-ins (in which case we surface a clear error in the boot screen).
-  async function ensureSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return true;
-    try {
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
-      return !!data?.session;
-    } catch (err) {
-      console.error('[drift] anonymous sign-in failed', err);
-      const msg = (err && err.message) || '';
-      if (/anonymous.*(disabled|not.*enabled|provider)/i.test(msg)) {
-        showBootError(
-          'Anonymous sign-ins are not enabled on your Supabase project.<br><br>' +
-          '<span style="color:var(--text-muted);font-size:13px;">' +
-          'Dashboard → Authentication → Providers → toggle "Anonymous Sign-ins" on, then reload.' +
-          '</span>'
-        );
-      } else {
-        showBootError(
-          'Could not start a session: ' + (msg || 'unknown error') +
-          '<br><br><a href="' + window.location.pathname + '" style="color:var(--sage);">Try again</a>'
-        );
-      }
-      return false;
-    }
-  }
+  // Single-user mode — no auth at all. The Supabase client still ships the
+  // anon key on every request (that's how the project is identified), but
+  // RLS is off server-side so the anon key has full read/write access. The
+  // production URL itself is the secret here; don't share it.
 
   // Pulls the data for the current (anonymous) user, seeds defaults if
   // their habits table is empty, then hands off to the existing UI.
@@ -2181,18 +2142,6 @@
 
       habits = sortHabits(habits);
 
-      // Settings account label — anonymous users have no email, so show
-      // a description of the session instead.
-      const { data: userResp } = await supabase.auth.getUser();
-      const accountEl = document.getElementById('account-email');
-      if (accountEl) {
-        if (userResp?.user?.email) {
-          accountEl.textContent = userResp.user.email;
-        } else {
-          accountEl.textContent = 'Anonymous · this device only';
-        }
-      }
-
       lastSeenDay = todayKey();
       setHeader();
       initStack();
@@ -2208,47 +2157,13 @@
     }
   }
 
-  /* Auth UI removed: anonymous sessions are created automatically in
-     ensureSession() / bootApp(). If we ever want to add an "Upgrade to
-     email-linked account" path, the place to wire it is Settings — see
-     supabase.auth.updateUser({ email }) / linkIdentity(). */
+  /* Auth UI removed: single-user mode. The Supabase client still ships the
+     anon key (so the project accepts the request), but RLS is off and the
+     user_id column defaults to a fixed UUID server-side, so every row
+     belongs to the same logical "user" no matter which device made it. */
 
-  // React to auth state changes. With anonymous sessions there's no
-  // "sign-in" event in the normal user-flow sense — signInAnonymously()
-  // fires SIGNED_IN once. SIGNED_OUT means the user tapped "Forget this
-  // session" (see Settings), so we wipe in-memory state and create a fresh
-  // anonymous session to keep the app usable.
-  supabase.auth.onAuthStateChange(async (event) => {
-    if (event === 'SIGNED_IN') {
-      bootApp();
-    } else if (event === 'SIGNED_OUT') {
-      booted = false;
-      habits = []; logs = {}; closedDays = [];
-      showBootScreen();
-      const ok = await ensureSession();
-      if (ok) bootApp();
-    }
-  });
-
-  // "Forget this session" — the equivalent of sign-out for an anonymous
-  // session. Useful for testing on a single device. WARNING: this orphans
-  // the data tied to the current anonymous user UUID — the rows still
-  // exist in Supabase but can't be reached without the old session, and
-  // a fresh anonymous user is created on next sign-in.
-  document.getElementById('row-signout').addEventListener('click', async () => {
-    const msg = 'Forget this session and start a fresh one?\n\n' +
-      'Your current habits stay in Supabase but become unreachable from this device. ' +
-      'A new empty session begins.';
-    if (!confirm(msg)) return;
-    try { await supabase.auth.signOut(); }
-    catch (err) { console.error('[drift] sign-out failed', err); }
-  });
-
-  // Boot: ensure a session (creating one anonymously if needed), then load
-  // the app. No login screen — if Anonymous Sign-ins are enabled in the
-  // Supabase project, this is a single round-trip to the auth endpoint.
-  const ok = await ensureSession();
-  if (ok) await bootApp();
+  // Boot: no auth, no session — just load the data and go.
+  await bootApp();
 </script>
 </body>
 </html>
